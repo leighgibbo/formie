@@ -44,6 +44,7 @@ mix.js('./src/js/captchas/turnstile.js', 'js/captchas');
 mix.js('./src/js/payments/stripe.js', 'js/payments');
 mix.js('./src/js/payments/paypal.js', 'js/payments');
 mix.js('./src/js/payments/payway.js', 'js/payments');
+mix.js('./src/js/payments/quickstream.js', 'js/payments');
 mix.js('./src/js/payments/opayo.js', 'js/payments');
 
 // Setup additional CSS-related options including Tailwind and any other PostCSS items

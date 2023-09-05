@@ -170,6 +170,7 @@ class Integrations extends Component
             payments\Opayo::class,
             payments\PayPal::class,
             payments\PayWay::class,
+            payments\QuickStream::class,
             payments\Stripe::class,
         ];
 
