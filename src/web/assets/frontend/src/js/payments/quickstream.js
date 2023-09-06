@@ -8,16 +8,16 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.$form = settings.$form;
         this.form = this.$form.form;
         this.$field = settings.$field;
-        this.$input = this.$field.querySelector('[data-fui-quickstream-button]');
+        this.$input = this.$field.querySelector('[data-fui-quickstream-form]');
 
         if (!this.$input) {
-            console.error('Unable to find QuickStream placeholder for [data-fui-quickstream-button]');
+            console.error('Unable to find QuickStream form placeholder for [data-fui-quickstream-form]');
 
             return;
         }
 
         this.publishableKey = settings.publishableKey;
-        this.supplierCode = settings.supplierCode;
+        this.supplierBusinessCode = settings.supplierBusinessCode;
         this.currency = settings.currency;
         this.amountType = settings.amountType;
         this.amountFixed = settings.amountFixed;
@@ -30,8 +30,8 @@ export class FormieQuickStream extends FormiePaymentProvider {
             return;
         }
 
-        if (!this.supplierCode) {
-            console.error('Missing supplierCode for QuickStream.');
+        if (!this.supplierBusinessCode) {
+            console.error('Missing supplierBusinessCode for QuickStream.');
 
             return;
         }
@@ -60,7 +60,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         if (!document.getElementById(this.quickstreamScriptId)) {
             const $script = document.createElement('script');
             $script.id = this.quickstreamScriptId;
-            $script.src = 'https://api.quickstream.support.qvalent.com/rest/v1/quickstream-api-1.0.min.js';
+            $script.src = 'https://api.quickstream.support.qvalent.com/rest/v1/quickstream-api-1.0.min.js'; // staging
             // $script.src = 'https://api.quickstream.westpac.com.au/rest/v1/quickstream-api-1.0.min.js'; //prod
 
             $script.async = true;
@@ -68,14 +68,14 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
             // Wait until quickstream-api.js has loaded, then initialize
             $script.onload = () => {
-                this.mountCard()
+                this.mountTrustedFrame()
             };
 
             document.body.appendChild($script);
         } else {
             // Ensure that QuickStream has been loaded and ready to use
             ensureVariable('QuickstreamAPI').then(() => {
-                this.mountCard()
+                this.mountTrustedFrame()
             });
         }
 
@@ -84,23 +84,11 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.form.addEventListener(this.$form, eventKey('onAfterFormieSubmit', 'quickstream'), this.onAfterSubmit.bind(this));
     }
 
-    mountCard() {
-        // payway.createCreditCardFrame({
-        //     layout: 'wide',
-        //     publishableApiKey: this.publishableKey,
-        //     tokenMode: 'callback',
-        // }, (err, frame) => {
-        //     if (err) {
-        //         console.error(`Error creating frame: ${err.message}`);
-        //     } else {
-        //         // Save the created frame for when we get the token
-        //         this.creditCardFrame = frame;
-        //     }
-        // });
+    mountTrustedFrame() {
         var trustedFrame;
         var options = {
             config: {
-                supplierBusinessCode: this.supplierCode // This is a required config option
+                supplierBusinessCode: this.supplierBusinessCode // This is a required config option
             }
         };
 
@@ -110,12 +98,24 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
         QuickstreamAPI.creditCards.createTrustedFrame( options, function( errors, data ) {
             if ( errors ) {
+                submit.disabled = true
                 // Handle errors here
             }
             else {
                 trustedFrame = data.trustedFrame
+                submit.disabled = false
             }
         } );
+
+        this.$input.addEventListener("submit", function(event){
+          event.preventDefault();
+          trustedFrame.submitForm(function(errors, data){
+            if(!errors){
+              QuickstreamAPI.creditCards.appendTokenToForm(form, data.singleUseToken.singleUseTokenId);
+              form.submit();
+            }
+          });
+        });
 
     }
 

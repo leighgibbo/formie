@@ -56,7 +56,7 @@ class QuickStream extends Payment
     // =========================================================================
 
     public ?string $publishableKey = null;
-    public ?string $supplierCode = null;
+    public ?string $supplierBusinessCode = null;
     public ?string $secretKey = null;
     public ?string $merchantId = null;
 
@@ -74,7 +74,7 @@ class QuickStream extends Payment
      */
     public function hasValidSettings(): bool
     {
-        return App::parseEnv($this->publishableKey) && App::parseEnv($this->secretKey) && App::parseEnv($this->supplierCode);
+        return App::parseEnv($this->publishableKey) && App::parseEnv($this->secretKey) && App::parseEnv($this->supplierBusinessCode);
     }
 
     /**
@@ -107,7 +107,7 @@ class QuickStream extends Payment
 
         $settings = [
             'publishableKey' => App::parseEnv($this->publishableKey),
-            'supplierCode' => App::parseEnv($this->supplierCode),
+            'supplierBusinessCode' => App::parseEnv($this->supplierBusinessCode),
             'currency' => $this->getFieldSetting('currency'),
             'amountType' => $this->getFieldSetting('amountType'),
             'amountFixed' => $this->getFieldSetting('amountFixed'),

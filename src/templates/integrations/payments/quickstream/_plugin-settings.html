@@ -3,16 +3,19 @@
 
 {% set instructions %}
 ### Step 1. Connect to the {name} API
-1. Go to your <a href="https://www.quickstream.com.au/" target="_blank">QuickStream account</a>.
-1. Click on the **Settings** navigation item in the top-right of the main header navigation.
-1. Click the **REST API Keys** link.
-1. Click the **Add** button, and select **Publishable** as the API Key type. Click the **Save** button.
-1. Copy the **API Key** from {name} and paste in the **Publishable Key** field below.
-1. Go back and click the click the **Add** button, and select **Secret** as the API Key type. Click the **Save** button.
-1. Copy the **API Key** from {name} and paste in the **Secret Key** field below.
-1. Click on the **Settings** navigation item in the top-right of the main header navigation.
-1. Click the **Merchants** link.
-1. Copy the **Merchant ID** from {name} and paste in the **Merchant ID** field below.
+1. Create a new **Publishable** API Key:
+- Sign in to your <a href="https://quickstream.support.qvalent.com/" target="_blank">QuickStream account</a>.
+- Click on Administration -> Facility Settings in the menu.
+- Go to REST API keys
+- Click on your publishable key (or add a new one)
+- Copy the key.
+- Paste it below.
+
+2. Set the business:
+- Click on Administration -> Facility Settings in the menu.
+- Go to View connection details and then select the REST API tab.
+- Copy a value for supplierBusinessCode from the list.
+- Paste it below.
 
 ### Step 2. Test Connection
 1. Save this integration.
@@ -37,12 +40,12 @@
 {{ forms.autosuggestField({
     label: 'Supplier Code' | t('formie'),
     instructions: 'Enter your {name} Supplier code here.' | t('formie', { name: integration.displayName() }),
-    name: 'supplierCode',
+    name: 'supplierBusinessCode',
     required: true,
     suggestEnvVars: true,
-    value: integration.settings.supplierCode ?? '',
-    warning: macros.configWarning('supplierCode', 'formie'),
-    errors: integration.getErrors('supplierCode'),
+    value: integration.settings.supplierBusinessCode ?? '',
+    warning: macros.configWarning('supplierBusinessCode', 'formie'),
+    errors: integration.getErrors('supplierBusinessCode'),
 }) }}
 
 {{ forms.autosuggestField({
@@ -58,7 +61,7 @@
 
 {{ forms.autosuggestField({
     label: 'Merchant ID' | t('formie'),
-    instructions: 'Enter your {name} Merchant ID here.' | t('formie', { name: integration.displayName() }),
+    instructions: '(TODO: DELETE ME?) Enter your {name} Merchant ID here.' | t('formie', { name: integration.displayName() }),
     name: 'merchantId',
     required: true,
     suggestEnvVars: true,
