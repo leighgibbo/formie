@@ -166,4 +166,4 @@ export class FormieQuickStream extends FormiePaymentProvider {
     }
 }
 
-window.FormiePayWay = FormiePayWay;
+window.FormieQuickStream = FormieQuickStream;
