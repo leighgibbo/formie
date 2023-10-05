@@ -169,7 +169,7 @@ class QuickStream extends Payment
             }
 
             $payload = [
-                'transactionType' => 'payment',
+                'transactionType' => 'PAYMENT',
                 'singleUseTokenId' => $quickstreamTokenId,
                 'supplierBusinessCode' => App::parseEnv($this->supplierBusinessCode),
                 'principalAmount' => $amount,
@@ -179,7 +179,7 @@ class QuickStream extends Payment
                     'submissionId' => $submission->id,
                 ],
                 'eci' => 'INTERNET',
-                'ipAddress' => Craft::$app->getRequest()->getUserIP(),
+                'ipAddress' => Craft::$app->getRequest()->getUserIP() ?? "192.168.1.1",
             ];
 
             // Raise a `modifySinglePayload` event
@@ -203,6 +203,7 @@ class QuickStream extends Payment
             $responseText = $response['responseText'] ?? null;
 
             if ($status !== 'approved' && $status !== 'approved*' && $status !== 'pending') {
+                Craft::warning(StringHelper::titleize($status) . ': ' . $responseText, 'quickstream-formie-integration');
                 throw new Exception(StringHelper::titleize($status) . ': ' . $responseText);
             }
 
