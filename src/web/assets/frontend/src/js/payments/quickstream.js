@@ -150,12 +150,11 @@ export class FormieQuickStream extends FormiePaymentProvider {
                     console.error(`Error getting token: ${errors}`);
                     this.addError('An error occured when processing your payment. Please try again.');
                 } else {
-                    // this.updateInputs('quickstreamTokenId', data.singleUseTokenId);
-
                     console.log('token received', data);
 
                     // all good, append the single use token to the Formie form, and submit
-                    QuickstreamAPI.creditCards.appendTokenToForm(this.form, data.singleUseToken.singleUseTokenId);
+                    // QuickstreamAPI.creditCards.appendTokenToForm(this.form, data.singleUseToken.singleUseTokenId);
+                    this.updateInputs('quickstreamTokenId', data.singleUseToken.singleUseTokenId);
                     this.submitHandler.submitForm();
                 }
             });
