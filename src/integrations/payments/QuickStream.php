@@ -58,7 +58,7 @@ class QuickStream extends Payment
     public ?string $publishableKey = null;
     public ?string $supplierBusinessCode = null;
     public ?string $secretKey = null;
-    public ?string $merchantId = null;
+    // public ?string $merchantId = null;
 
 
     // Public Methods
@@ -175,7 +175,7 @@ class QuickStream extends Payment
                 'transactionType' => 'payment',
                 'customerNumber' => $submission->id,
                 'orderNumber' => $submission->id,
-                'merchantId' => App::parseEnv($this->merchantId),
+                // 'merchantId' => App::parseEnv($this->merchantId),
                 'customerIpAddress' => Craft::$app->getRequest()->getUserIP(),
             ];
 

@@ -50,6 +50,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.onAfterSubmit();
 
         // Remove unique event listeners
+        // TODO: review this works
         this.form.removeEventListener(eventKey('onFormiePaymentValidate', 'quickstream'));
         this.form.removeEventListener(eventKey('onAfterFormieSubmit', 'quickstream'));
     }
@@ -80,6 +81,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         }
 
         // Attach custom event listeners on the form
+        // TODO: Review this works
         this.form.addEventListener(this.$form, eventKey('onFormiePaymentValidate', 'quickstream'), this.onValidate.bind(this));
         this.form.addEventListener(this.$form, eventKey('onAfterFormieSubmit', 'quickstream'), this.onAfterSubmit.bind(this));
     }

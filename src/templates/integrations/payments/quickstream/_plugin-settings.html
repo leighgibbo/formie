@@ -39,17 +39,6 @@
 }) }}
 
 {{ forms.autosuggestField({
-    label: 'Supplier Code' | t('formie'),
-    instructions: 'Enter your {name} Supplier code here.' | t('formie', { name: integration.displayName() }),
-    name: 'supplierBusinessCode',
-    required: true,
-    suggestEnvVars: true,
-    value: integration.settings.supplierBusinessCode ?? '',
-    warning: macros.configWarning('supplierBusinessCode', 'formie'),
-    errors: integration.getErrors('supplierBusinessCode'),
-}) }}
-
-{{ forms.autosuggestField({
     label: 'Secret Key' | t('formie'),
     instructions: 'Enter your {name} Secret Key here.' | t('formie', { name: integration.displayName() }),
     name: 'secretKey',
@@ -61,8 +50,22 @@
 }) }}
 
 {{ forms.autosuggestField({
+    label: 'Supplier Business Code' | t('formie'),
+    instructions: 'Enter your {name} Supplier Business Code here.' | t('formie', { name: integration.displayName() }),
+    name: 'supplierBusinessCode',
+    required: true,
+    suggestEnvVars: true,
+    value: integration.settings.supplierBusinessCode ?? '',
+    warning: macros.configWarning('supplierBusinessCode', 'formie'),
+    errors: integration.getErrors('supplierBusinessCode'),
+}) }}
+
+<!-- {#
+    TODO: DELETE ME?
+    
+{{ forms.autosuggestField({
     label: 'Merchant ID' | t('formie'),
-    instructions: '(TODO: DELETE ME?) Enter your {name} Merchant ID here.' | t('formie', { name: integration.displayName() }),
+    instructions: 'Enter your {name} Merchant ID here.' | t('formie', { name: integration.displayName() }),
     name: 'merchantId',
     required: true,
     suggestEnvVars: true,
@@ -70,3 +73,4 @@
     warning: macros.configWarning('merchantId', 'formie'),
     errors: integration.getErrors('merchantId'),
 }) }}
+#} -->
