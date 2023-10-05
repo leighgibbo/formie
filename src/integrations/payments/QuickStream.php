@@ -187,7 +187,14 @@ class QuickStream extends Payment
             ]);
             $this->trigger(self::EVENT_MODIFY_PAYLOAD, $event);
 
-            $response = $this->request('POST', 'transactions', ['form_params' => $event->payload]);
+            $response = $this->request('POST', 'transactions', [
+                'headers' => [
+                    // 'User-Agent' => 'testing/1.0',
+                    'Content-Type' => 'application/json',
+                    'Accept'     => 'application/json',
+                ],
+                'form_params' => $event->payload
+            ]);
 
             $status = $response['status'] ?? null;
             $responseText = $response['responseText'] ?? null;
