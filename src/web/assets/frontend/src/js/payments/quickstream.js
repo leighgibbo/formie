@@ -69,14 +69,14 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
             // Wait until quickstream-api.js has loaded, then initialize
             $script.onload = () => {
-                this.mountTrustedFrame()
+                this.mountTrustedFrame();
             };
 
             document.body.appendChild($script);
         } else {
             // Ensure that QuickStream has been loaded and ready to use
             ensureVariable('QuickstreamAPI').then(() => {
-                this.mountTrustedFrame()
+                this.mountTrustedFrame();
             });
         }
 
@@ -87,36 +87,35 @@ export class FormieQuickStream extends FormiePaymentProvider {
     }
 
     mountTrustedFrame() {
-        var trustedFrame;
-        var options = {
+        let trustedFrame;
+        const options = {
             config: {
-                supplierBusinessCode: this.supplierBusinessCode // This is a required config option
-            }
+                supplierBusinessCode: this.supplierBusinessCode, // This is a required config option
+            },
         };
 
         QuickstreamAPI.init({
-            publishableApiKey: this.publishableKey
+            publishableApiKey: this.publishableKey,
         });
 
-        QuickstreamAPI.creditCards.createTrustedFrame( options, function( errors, data ) {
-            if ( errors ) {
-                submit.disabled = true
+        QuickstreamAPI.creditCards.createTrustedFrame(options, (errors, data) => {
+            if (errors) {
+                submit.disabled = true;
                 // Handle errors here
+            } else {
+                trustedFrame = data.trustedFrame;
+                submit.disabled = false;
             }
-            else {
-                trustedFrame = data.trustedFrame
-                submit.disabled = false
-            }
-        } );
+        });
 
-        this.$input.addEventListener("submit", function(event){
-          event.preventDefault();
-          trustedFrame.submitForm(function(errors, data){
-            if(!errors){
-              QuickstreamAPI.creditCards.appendTokenToForm(form, data.singleUseToken.singleUseTokenId);
-              form.submit();
-            }
-          });
+        this.$input.addEventListener('submit', (event) => {
+            event.preventDefault();
+            trustedFrame.submitForm((errors, data) => {
+                if (!errors) {
+                    QuickstreamAPI.creditCards.appendTokenToForm(form, data.singleUseToken.singleUseTokenId);
+                    form.submit();
+                }
+            });
         });
 
     }
