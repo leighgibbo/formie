@@ -1,7 +1,7 @@
 {# Must include the `id="quickstream-credit-card"` #}
-<div id="quickstream-credit-card">
-    <form id="quickstreamPaymentForm" data-fui-quickstream-form action="/process-payment" method="post">
-        <div data-quickstream-api="creditCardContainer"></div>
-        <input id="make-payment-submit" type="submit" disabled="true"/>
-    </form>
+<div id="quickstream-credit-card" data-fui-quickstream-frame>
+    <div data-quickstream-api="creditCardContainer"></div>
 </div>
+
+<input type="hidden" name="{{ field.getHtmlName() }}">
+<input type="hidden" name="{{ field.getHtmlName('quickstreamTokenId') }}">

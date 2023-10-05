@@ -5,10 +5,11 @@ export class FormieQuickStream extends FormiePaymentProvider {
     constructor(settings = {}) {
         super(settings);
 
+        this.trustedFrame = false;
         this.$form = settings.$form;
         this.form = this.$form.form;
         this.$field = settings.$field;
-        this.$input = this.$field.querySelector('[data-fui-quickstream-form]');
+        this.$input = this.$field.querySelector('[data-fui-quickstream-frame]');
 
         if (!this.$input) {
             console.error('Unable to find QuickStream form placeholder for [data-fui-quickstream-form]');
@@ -56,6 +57,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
     }
 
     initField() {
+        console.log('initField fired');
         // Fetch and attach the script only once - this is in case there are multiple forms on the page.
         // They all go to a single callback which resolves its loaded state
         if (!document.getElementById(this.quickstreamScriptId)) {
@@ -87,12 +89,14 @@ export class FormieQuickStream extends FormiePaymentProvider {
     }
 
     mountTrustedFrame() {
-        let trustedFrame;
+        console.log('mountTrustedFrame fired');
         const options = {
             config: {
                 supplierBusinessCode: this.supplierBusinessCode, // This is a required config option
             },
         };
+
+        console.log('firing QuickstreamAPI.init with key', this.publishableKey);
 
         QuickstreamAPI.init({
             publishableApiKey: this.publishableKey,
@@ -100,23 +104,24 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
         QuickstreamAPI.creditCards.createTrustedFrame(options, (errors, data) => {
             if (errors) {
-                submit.disabled = true;
                 // Handle errors here
+                console.error(`Error creating trusted frame: ${errors}`);
             } else {
-                trustedFrame = data.trustedFrame;
-                submit.disabled = false;
+                this.trustedFrame = data.trustedFrame;
+                console.log('trustedFrame created');
             }
         });
 
-        this.$input.addEventListener('submit', (event) => {
-            event.preventDefault();
-            trustedFrame.submitForm((errors, data) => {
-                if (!errors) {
-                    QuickstreamAPI.creditCards.appendTokenToForm(form, data.singleUseToken.singleUseTokenId);
-                    form.submit();
-                }
-            });
-        });
+        // Quickstream's example method of handling (by controlling the parent form iteself): TODO: delete me
+        // this.$input.addEventListener('submit', (event) => {
+        //     event.preventDefault();
+        //     trustedFrame.submitForm((errors, data) => {
+        //         if (!errors) {
+        //             QuickstreamAPI.creditCards.appendTokenToForm(form, data.singleUseToken.singleUseTokenId);
+        //             form.submit();
+        //         }
+        //     });
+        // });
 
     }
 
@@ -131,34 +136,53 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
         e.preventDefault();
 
+        console.log('onValidate fired');
+
         // Save for later to trigger real submit
         this.submitHandler = e.detail.submitHandler;
 
         this.removeError();
 
-        if (this.creditCardFrame) {
-            this.creditCardFrame.getToken((err, data) => {
-                if (err) {
-                    console.error(`Error getting token: ${err.message}`);
-
-                    this.addError(err.message);
+        if (this.trustedFrame) {
+            console.log('trustedFrame exists, submitting frame to get token');
+            this.trustedFrame.submitForm((errors, data) => {
+                if (errors) {
+                    console.error(`Error getting token: ${errors}`);
+                    this.addError('An error occured when processing your payment. Please try again.');
                 } else {
-                    // Append an input so it's not namespaced with Twig
-                    this.updateInputs('quickstreamTokenId', data.singleUseTokenId);
+                    // this.updateInputs('quickstreamTokenId', data.singleUseTokenId);
 
+                    console.log('token received', data);
+
+                    // all good, append the single use token to the Formie form, and submit
+                    QuickstreamAPI.creditCards.appendTokenToForm(this.form, data.singleUseToken.singleUseTokenId);
                     this.submitHandler.submitForm();
                 }
             });
+
+            // The method used in the PayWay gateway (for reference) - TODO: delete me
+            // this.trustedFrame.getToken((err, data) => {
+            //     if (err) {
+            //         console.error(`Error getting token: ${err.message}`);
+            //         this.addError(err.message);
+            //     } else {
+            //         // Append an input so it's not namespaced with Twig
+            //         this.updateInputs('quickstreamTokenId', data.singleUseTokenId);
+
+            //         this.submitHandler.submitForm();
+            //     }
+            // });
         } else {
             console.error('Credit Card Frame is invalid.');
         }
     }
 
     onAfterSubmit(e) {
+        console.log('onAfterSubmit fired');
         // Clear the form
-        if (this.creditCardFrame) {
-            this.creditCardFrame.destroy();
-            this.creditCardFrame = null;
+        if (this.trustedFrame) {
+            this.trustedFrame.destroy();
+            this.trustedFrame = null;
         }
 
         // Reset all hidden inputs
