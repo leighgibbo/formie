@@ -169,14 +169,17 @@ class QuickStream extends Payment
             }
 
             $payload = [
-                'singleUseTokenId' => $quickstreamTokenId,
-                'principalAmount' => $amount,
-                'currency' => 'aud',
                 'transactionType' => 'payment',
-                'customerNumber' => $submission->id,
-                'orderNumber' => $submission->id,
-                // 'merchantId' => App::parseEnv($this->merchantId),
-                'customerIpAddress' => Craft::$app->getRequest()->getUserIP(),
+                'singleUseTokenId' => $quickstreamTokenId,
+                'supplierBusinessCode' => App::parseEnv($this->supplierBusinessCode),
+                'principalAmount' => $amount,
+                'currency' => 'AUD',
+                // 'customerReferenceNumber' => $submission->id,
+                'metadata' => [
+                    'submissionId' => $submission->id,
+                ],
+                'eci' => 'INTERNET',
+                'ipAddress' => Craft::$app->getRequest()->getUserIP(),
             ];
 
             // Raise a `modifySinglePayload` event
