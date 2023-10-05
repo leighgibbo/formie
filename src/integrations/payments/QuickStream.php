@@ -196,14 +196,14 @@ class QuickStream extends Payment
                     'Content-Type' => 'application/json',
                     'Accept'     => 'application/json',
                 ],
-                'form_params' => $event->payload
+                'json' => $event->payload
             ]);
 
             $status = $response['status'] ?? null;
             $responseText = $response['responseText'] ?? null;
+            $customerMsg = $response['customerMessage'] ?? null;
 
-            if ($status !== 'approved' && $status !== 'approved*' && $status !== 'pending') {
-                Craft::warning(StringHelper::titleize($status) . ': ' . $responseText, 'quickstream-formie-integration');
+            if ($status !== 'Approved' && $status !== 'Approved*' && $status !== 'Pending') {
                 throw new Exception(StringHelper::titleize($status) . ': ' . $responseText);
             }
 
@@ -216,11 +216,11 @@ class QuickStream extends Payment
             $payment->reference = $response['transactionId'] ?? '';
             $payment->response = $response;
 
-            if ($status === 'pending') {
+            if ($status === 'Pending') {
                 $payment->status = PaymentModel::STATUS_PENDING;
             }
 
-            if ($status === 'approved' || $status === 'approved*') {
+            if ($status === 'Approved' || $status === 'Approved*') {
                 $payment->status = PaymentModel::STATUS_SUCCESS;
             }
 
@@ -248,7 +248,7 @@ class QuickStream extends Payment
             $payment->currency = $currency;
             $payment->status = PaymentModel::STATUS_FAILED;
             $payment->reference = null;
-            $payment->response = ['message' => $e->getMessage()];
+            $payment->response = $customerMsg ?? ['message' => $e->getMessage()];
 
             Formie::$plugin->getPayments()->savePayment($payment);
 
@@ -285,9 +285,12 @@ class QuickStream extends Payment
             return $this->_client;
         }
 
+        /* QUICKSTREAM API ENDPOINTS */
+        // Prod:    'https://api.quickstream.westpac.com.au/rest/v1/'
+        // Staging: 'https://api.quickstream.support.qvalent.com/rest/v1/'
+
         return $this->_client = Craft::createGuzzleClient([
-            'base_uri' => 'https://api.quickstream.support.qvalent.com/rest/v1/',
-            // 'base_uri' => 'https://api.quickstream.westpac.com.au/rest/v1/',     //prod
+            'base_uri' => (App::env('ENVIRONMENT') == 'production' || App::env('ENVIRONMENT') == 'live')? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/',
             'auth' => [App::parseEnv($this->secretKey), ''],
         ]);
     }

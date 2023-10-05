@@ -57,9 +57,9 @@ export class FormieQuickStream extends FormiePaymentProvider {
     }
 
     initField() {
-        console.log('initField fired');
         // Fetch and attach the script only once - this is in case there are multiple forms on the page.
-        // They all go to a single callback which resolves its loaded state
+        // They all go to a single callback which resolves its loaded state'
+        // TODO: switch Endpoint based on ENV
         if (!document.getElementById(this.quickstreamScriptId)) {
             const $script = document.createElement('script');
             $script.id = this.quickstreamScriptId;
@@ -89,14 +89,58 @@ export class FormieQuickStream extends FormiePaymentProvider {
     }
 
     mountTrustedFrame() {
-        console.log('mountTrustedFrame fired');
+        // See more at: https://quickstream.westpac.com.au/docs/quickstreamapi/v1/quickstream-api-js/
+
+        const inputStyle = {
+            height: '34px',
+            padding: '0px 12px',
+            'font-size': '14px',
+            border: '1px solid #ccc',
+            'border-radius': '2px',
+        };
+
         const options = {
             config: {
                 supplierBusinessCode: this.supplierBusinessCode, // This is a required config option
             },
+            iframe: {
+                width: '100%',
+                height: '100%',
+                style: {
+                    'font-size': '14px',
+                    'line-height': '24px',
+                    border: '1px solid #dedede',
+                    'border-radius': '2px',
+                    'margin-bottom': '0.75rem',
+                    'min-height': '400px',
+                    padding: '1.5rem',
+                    width: '100%',
+                    'background-color': 'white',
+                },
+            },
+            showAcceptedCards: true,
+            cardholderName: {
+                style: inputStyle,
+                label: 'Name on card',
+            },
+            cardNumber: {
+                style: inputStyle,
+                label: 'Card number',
+            },
+            expiryDateMonth: {
+                style: inputStyle,
+            },
+            expiryDateYear: {
+                style: inputStyle,
+            },
+            cvn: {
+                hidden: false,
+                label: 'Security code',
+            },
+            body: {
+                style: {},
+            },
         };
-
-        console.log('firing QuickstreamAPI.init with key', this.publishableKey);
 
         QuickstreamAPI.init({
             publishableApiKey: this.publishableKey,
@@ -108,20 +152,8 @@ export class FormieQuickStream extends FormiePaymentProvider {
                 console.error(`Error creating trusted frame: ${errors}`);
             } else {
                 this.trustedFrame = data.trustedFrame;
-                console.log('trustedFrame created');
             }
         });
-
-        // Quickstream's example method of handling (by controlling the parent form iteself): TODO: delete me
-        // this.$input.addEventListener('submit', (event) => {
-        //     event.preventDefault();
-        //     trustedFrame.submitForm((errors, data) => {
-        //         if (!errors) {
-        //             QuickstreamAPI.creditCards.appendTokenToForm(form, data.singleUseToken.singleUseTokenId);
-        //             form.submit();
-        //         }
-        //     });
-        // });
 
     }
 
@@ -133,10 +165,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         if (this.form.submitAction !== 'submit' || e.detail.invalid) {
             return;
         }
-
         e.preventDefault();
-
-        console.log('onValidate fired');
 
         // Save for later to trigger real submit
         this.submitHandler = e.detail.submitHandler;
@@ -144,14 +173,11 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.removeError();
 
         if (this.trustedFrame) {
-            console.log('trustedFrame exists, submitting frame to get token');
             this.trustedFrame.submitForm((errors, data) => {
                 if (errors) {
-                    console.error(`Error getting token: ${errors}`);
-                    this.addError('An error occured when processing your payment. Please try again.');
+                    console.warn(`Error validating Trusted Frame: ${errors}`);
+                    // this.addError('An error occured when processing your payment. Please try again.');
                 } else {
-                    console.log('token received', data);
-
                     // all good, append the single use token to the Formie form, and submit
                     // QuickstreamAPI.creditCards.appendTokenToForm(this.form, data.singleUseToken.singleUseTokenId);
                     this.updateInputs('quickstreamTokenId', data.singleUseToken.singleUseTokenId);
@@ -159,28 +185,22 @@ export class FormieQuickStream extends FormiePaymentProvider {
                 }
             });
 
-            // The method used in the PayWay gateway (for reference) - TODO: delete me
-            // this.trustedFrame.getToken((err, data) => {
-            //     if (err) {
-            //         console.error(`Error getting token: ${err.message}`);
-            //         this.addError(err.message);
-            //     } else {
-            //         // Append an input so it's not namespaced with Twig
-            //         this.updateInputs('quickstreamTokenId', data.singleUseTokenId);
-
-            //         this.submitHandler.submitForm();
-            //     }
-            // });
         } else {
             console.error('Credit Card Frame is invalid.');
         }
     }
 
     onAfterSubmit(e) {
-        console.log('onAfterSubmit fired');
         // Clear the form
         if (this.trustedFrame) {
-            this.trustedFrame.destroy();
+            this.trustedFrame.teardown((errors, data) => {
+                if (errors) {
+                    // Handle errors here
+                    console.error('Errors when destroying Trusted Frame:', errors);
+                } else {
+                    // console.log("Trusted Frame has been destroyed.");
+                }
+            });
             this.trustedFrame = null;
         }
 
