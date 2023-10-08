@@ -112,6 +112,8 @@ class QuickStream extends Payment
             'amountType' => $this->getFieldSetting('amountType'),
             'amountFixed' => $this->getFieldSetting('amountFixed'),
             'amountVariable' => $this->getFieldSetting('amountVariable'),
+            // 'showReference' => $this->getFieldSetting('showReference'),
+            // 'referenceField' => $this->getFieldSetting('referenceField'),
         ];
 
         return [
@@ -213,7 +215,7 @@ class QuickStream extends Payment
             $payment->fieldId = $field->id;
             $payment->amount = $amount;
             $payment->currency = $currency;
-            $payment->reference = $response['transactionId'] ?? '';
+            $payment->reference = $response['receiptNumber'] ?? '';
             $payment->response = $response;
 
             if ($status === 'Pending') {
@@ -351,6 +353,39 @@ class QuickStream extends Payment
                     ],
                 ],
             ],
+            // [
+            //     '$formkit' => 'fieldWrap',
+            //     'label' => Craft::t('formie', 'Show Payment Reference Field'),
+            //     // 'help' => Craft::t('formie', 'Allow customers to input a payment reference. This can be derived from a field.'),
+            //     'help' => Craft::t('formie', 'Allow customers to input a payment reference.'),
+            //     'children' => [
+            //         [
+            //             '$el' => 'div',
+            //             'attrs' => [
+            //                 'class' => 'flex',
+            //             ],
+            //             'children' => [
+            //                 SchemaHelper::lightswitchField([
+            //                     // 'label' => Craft::t('formie', 'Field Label'),
+            //                     // 'help' => Craft::t('formie', 'Whether this field should be required when filling out the form.'),
+            //                     'name' => 'showReference',
+            //                 ]),
+            //                 SchemaHelper::fieldSelectField([
+            //                     'name' => 'referenceField',
+            //                     'fieldTypes' => [
+            //                         formfields\Calculations::class,
+            //                         formfields\Dropdown::class,
+            //                         formfields\Hidden::class,
+            //                         formfields\Number::class,
+            //                         formfields\Radio::class,
+            //                         formfields\SingleLineText::class,
+            //                     ],
+            //                     'if' => '$get(showReference).value == ' . true,
+            //                 ]),
+            //             ],
+            //         ],
+            //     ],
+            // ],
         ];
     }
     
