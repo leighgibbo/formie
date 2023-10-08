@@ -13,6 +13,7 @@ use verbb\formie\elements\db\FormQuery;
 use verbb\formie\events\ModifyFormHtmlTagEvent;
 use verbb\formie\fields\formfields\SingleLineText;
 use verbb\formie\gql\interfaces\FieldInterface;
+use verbb\formie\helpers\ArrayHelper;
 use verbb\formie\helpers\HandleHelper;
 use verbb\formie\helpers\Html;
 use verbb\formie\models\FieldLayout;
@@ -33,10 +34,10 @@ use craft\db\Table;
 use craft\elements\Entry;
 use craft\elements\User;
 use craft\elements\actions\Delete;
+use craft\elements\actions\Edit;
 use craft\elements\actions\Restore;
 use craft\elements\db\ElementQueryInterface;
 use craft\errors\MissingComponentException;
-use craft\helpers\ArrayHelper;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craft\helpers\Json;
@@ -219,6 +220,20 @@ class Form extends Element
         return $actions;
     }
 
+    public static function actions(string $source): array
+    {
+        $actions = parent::actions($source);
+
+        // Remove some actions Craft adds by default
+        foreach ($actions as $key => $action) {
+            if (is_array($action) && isset($action['type']) && ($action['type'] === Edit::class || is_subclass_of($action['type'], Edit::class))) {
+                    unset($actions[$key]);
+            }
+        }
+
+        return array_values($actions);
+    }
+
     /**
      * @inheritDoc
      */
@@ -322,6 +337,7 @@ class Form extends Element
     private array $_populatedFieldValues = [];
     private array $_frontEndJsEvents = [];
     private ?string $_redirectUrl = null;
+    private ?string $_actionUrl = null;
 
     // Render Options
     private array $_themeConfig = [];
@@ -412,6 +428,19 @@ class Form extends Element
     public function canDuplicate(User $user): bool
     {
         return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getConsolidatedErrors()
+    {
+        $errors = [
+            $this->getErrors(),
+            $this->_findErrors($this->getFormConfig()),
+        ];
+
+        return array_values(ArrayHelper::arrayFilterRecursive(array_merge(...$errors)));
     }
 
     /**
@@ -614,9 +643,9 @@ class Form extends Element
         ]);
     }
 
-    public function getFormId(): string
+    public function getFormId(bool $useCache = true): string
     {
-        if ($this->_formId) {
+        if ($this->_formId && $useCache) {
             return $this->_formId;
         }
 
@@ -974,6 +1003,7 @@ class Form extends Element
             $this->resetSnapshotData();
         }
 
+        // If we have a current submission in the session, use that
         if ($this->_currentSubmission) {
             return $this->_currentSubmission;
         }
@@ -1071,11 +1101,23 @@ class Form extends Element
      */
     public function getActionUrl(): string
     {
-        if ($this->isEditingSubmission()) {
+        // In case people want to use `setSubmission()` but not change the endpoint so integrations will fire.
+        if ($this->_actionUrl) {
+            return $this->_actionUrl;
+        }
+
+        // If editing a submission, assume we're saving, not submitting. Unless this is an incomplete submission
+        if ($this->isEditingSubmission() && !$this->_editingSubmission->isIncomplete) {
             return 'formie/submissions/save-submission';
         }
 
         return 'formie/submissions/submit';
+    }
+
+    public function setActionUrl(string $url): void
+    {
+        // In case people want to use `setSubmission()` but not change the endpoint so integrations will fire.
+        $this->_actionUrl = $url;
     }
 
     public function getRelations(): string
@@ -1220,7 +1262,7 @@ class Form extends Element
         $request = Craft::$app->getRequest();
         $url = '';
 
-        // We don't want to show the redirect URL on unfinished mutli-page forms, so check first
+        // We don't want to show the redirect URL on unfinished multi-page forms, so check first
         if ($this->settings->submitMethod == 'page-reload') {
             if ($checkLastPage && !$this->isLastPage()) {
                 return $url;
@@ -1246,6 +1288,9 @@ class Form extends Element
         if ($url && $request->getIsSiteRequest() && $includeQueryString) {
             $url = UrlHelper::url($url, $request->getQueryStringWithoutPath());
         }
+
+        // Handle any UTF characters defined in the URL and encode them properly
+        $url = utf8_encode($url);
 
         return $url;
     }
@@ -2358,5 +2403,20 @@ class Form extends Element
         }
 
         return [];
+    }
+
+    private function _findErrors($array, &$errors = [])
+    {
+        foreach ($array as $key => $value) {
+            if (is_array($value)) {
+                $this->_findErrors($value, $errors);
+            }
+
+            if ($key === 'errors') {
+                $errors[] = $value;
+            }
+        }
+
+        return $errors;
     }
 }

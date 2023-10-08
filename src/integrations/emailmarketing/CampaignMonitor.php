@@ -79,6 +79,47 @@ class CampaignMonitor extends EmailMarketing
                         'handle' => 'Name',
                         'name' => Craft::t('formie', 'Name'),
                     ]),
+                    new IntegrationField([
+                        'handle' => 'MobileNumber',
+                        'name' => Craft::t('formie', 'Mobile Number'),
+                        'type' => IntegrationField::TYPE_PHONE,
+                    ]),
+                    new IntegrationField([
+                        'handle' => 'ConsentToTrack',
+                        'name' => Craft::t('formie', 'Consent To Track'),
+                        'type' => IntegrationField::TYPE_BOOLEAN,
+                        'options' => [
+                            'label' => Craft::t('formie', 'Consent To Track'),
+                            'options' => [
+                                [
+                                    'label' =>  Craft::t('formie', 'Yes'),
+                                    'value' => 'Yes',
+                                ],
+                                [
+                                    'label' =>  Craft::t('formie', 'No'),
+                                    'value' => 'No',
+                                ],
+                            ],
+                        ],
+                    ]),
+                    new IntegrationField([
+                        'handle' => 'ConsentToSendSms',
+                        'name' => Craft::t('formie', 'Consent To Send SMS'),
+                        'type' => IntegrationField::TYPE_BOOLEAN,
+                        'options' => [
+                            'label' => Craft::t('formie', 'Consent To Track'),
+                            'options' => [
+                                [
+                                    'label' =>  Craft::t('formie', 'Yes'),
+                                    'value' => 'Yes',
+                                ],
+                                [
+                                    'label' =>  Craft::t('formie', 'No'),
+                                    'value' => 'No',
+                                ],
+                            ],
+                        ],
+                    ]),
                 ], $this->_getCustomFields($fields));
 
                 $settings['lists'][] = new IntegrationCollection([
@@ -102,6 +143,9 @@ class CampaignMonitor extends EmailMarketing
             // Pull out email, as it needs to be top level
             $email = ArrayHelper::remove($fieldValues, 'Email');
             $name = ArrayHelper::remove($fieldValues, 'Name');
+            $mobileNumber = ArrayHelper::remove($fieldValues, 'MobileNumber');
+            $consentToTrack = ArrayHelper::remove($fieldValues, 'ConsentToTrack');
+            $consentToSendSms = ArrayHelper::remove($fieldValues, 'ConsentToSendSms');
 
             // Format custom fields
             $customFields = [];
@@ -128,8 +172,19 @@ class CampaignMonitor extends EmailMarketing
                 'CustomFields' => $customFields,
                 'Resubscribe' => true,
                 'RestartSubscriptionBasedAutoresponders' => true,
-                'ConsentToTrack' => 'Yes',
             ];
+
+            if ($consentToTrack !== null) {
+                $payload['ConsentToTrack'] = $consentToTrack ? 'Yes' : 'No';
+            }
+
+            if ($consentToSendSms !== null) {
+                $payload['ConsentToSendSms'] = $consentToSendSms ? 'Yes' : 'No';
+            }
+
+            if ($mobileNumber) {
+                $payload['MobileNumber'] = $mobileNumber;
+            }
 
             $response = $this->deliverPayload($submission, "subscribers/{$this->listId}.json", $payload);
 

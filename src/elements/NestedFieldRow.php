@@ -171,7 +171,13 @@ class NestedFieldRow extends Element implements BlockElementInterface
      */
     public function getFieldLayout(): ?FieldLayout
     {
-        return $this->_getField()->getFieldLayout();
+        return $this->getField()->getFieldLayout();
+    }
+
+    public function getField(): NestedFieldInterface
+    {
+        /** @noinspection PhpIncompatibleReturnTypeInspection */
+        return Craft::$app->getFields()->getFieldById($this->fieldId);
     }
 
     /**
@@ -202,7 +208,7 @@ class NestedFieldRow extends Element implements BlockElementInterface
      */
     public function getContentTable(): string
     {
-        return $this->_getField()->contentTable;
+        return $this->getField()->contentTable;
     }
 
     /**
@@ -218,7 +224,7 @@ class NestedFieldRow extends Element implements BlockElementInterface
      */
     public function getFieldContext(): string
     {
-        return $this->_getField()->getFormFieldContext();
+        return $this->getField()->getFormFieldContext();
     }
 
     /**
@@ -306,6 +312,36 @@ class NestedFieldRow extends Element implements BlockElementInterface
         return true;
     }
 
+    public function afterValidate(): void
+    {
+        parent::afterValidate();
+
+        // For server-side validation, swap out the error message if a custom one is defined
+        if (($fieldLayout = $this->getFieldLayout()) && ($errors = $this->getErrors())) {
+            $customErrorMessages = [];
+            $layoutElements = $fieldLayout->getVisibleCustomFieldElements($this);
+
+            foreach ($layoutElements as $layoutElement) {
+                $field = $layoutElement->getField();
+
+                if ($field->errorMessage) {
+                    $customErrorMessages[$field->handle] = $field->errorMessage;
+                }
+            }
+
+            if ($customErrorMessages) {
+                foreach ($errors as $errorKey => $error) {
+                    $customError = $customErrorMessages[$errorKey] ?? null;
+
+                    if ($customError) {
+                        $this->clearErrors($errorKey);
+                        $this->addError($errorKey, $customError);
+                    }
+                }
+            }
+        }
+    }
+
 
     // Protected Methods
     // =========================================================================
@@ -320,18 +356,5 @@ class NestedFieldRow extends Element implements BlockElementInterface
         $rules[] = [['fieldId', 'ownerId', 'sortOrder'], 'number', 'integerOnly' => true];
 
         return $rules;
-    }
-
-
-    // Private Methods
-    // =========================================================================
-
-    /**
-     * Returns the nested field.
-     */
-    private function _getField(): NestedFieldInterface
-    {
-        /** @noinspection PhpIncompatibleReturnTypeInspection */
-        return Craft::$app->getFields()->getFieldById($this->fieldId);
     }
 }

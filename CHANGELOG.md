@@ -1,5 +1,76 @@
 # Changelog
 
+## 2.0.38 - 2023-10-08
+
+### Added
+- Added better support for editing submissions.
+- Added “Consent To Track” and “Consent To Send SMS” to Campaign Monitor integration.
+- Added Phone integration field type, for formatting phone numbers sent to integrations.
+- Added support for expand parameter on target schemas for Microsoft Dynamics 365 CRM. (thanks @jamesmacwhite).
+
+### Changed
+- Changed references for `Linked.in` to `LinkedIn`.
+- Calling `craft.formie.renderForm()` now sets a unique `formId` to assist with rendering the same form multiple times to retain JS functionality.
+- Clearing a current submission can now be done without a POST request.
+
+### Fixed
+- Fixed an issue with Dynamics 365 and Created By value.
+- Fixed query restrictions for system users for Microsoft Dynamics 365 integration.
+- Fixed payment fields not working within Group fields.
+- Fixed Turnstile captcha firing form submissions multiple times for Ajax based forms.
+- Fixed Turnstile captcha triggering unload warnings.
+- Fixed custom error messages for fields not being used for server-side errors.
+- Fixed DotDigital CRM Integration response when updating the address book.
+- Fixed an error with JS binding to the same form rendered multiple times.
+- Fixed `actionUrl` not taking into account incomplete editing submissions.
+- Fixed an error for some integrations and an invalid enabled state.
+- Fixed an error processing User element integrations and user profile.
+
+## 2.0.37 - 2023-09-25
+
+### Added
+- Added “Created By” field mapping for Dynamics 365 CRM integration.
+- Added `Field::getRequiredPlugins()` to better support plugin-dependant fields.
+- Added Honeypot value for GraphQL queries.
+- Added `siteKey` values for supported Captchas for GraphQL queries.
+- Added “Mobile Number” to Campaign Monitor integration.
+- Added `form.setActionUrl()`.
+- Added `FormSettings::pageRedirectUrl` to allow setting the redirect URL for every page submission.
+
+### Changed
+- Updated `isPluginInstalledAndEnabled` check.
+- Updated `stripe/stripe-php` dependency to align with Craft Commerce.
+
+### Fixed
+- Fixed Dropdown field throwing errors after changing options from being an `optgroup`.
+- Fixed an error when toggling Dropdown field options from using an optgroup to a default.
+- Fixed an error when setting cookie values for a Hidden field, and not dealing with encoded values properly.
+- Fixed showing “Edit Form” element action when viewing forms.
+- Fixed mapping a Formie Submission field to the Submission ID for Element integrations.
+- Fixed `form` not being available for PDF templates.
+- Fixed an issue with Honeypot Captcha and GraphQL mutations.
+- Fixed File Upload fields in Repeater fields not working correctly with GraphQL mutations.
+- Fixed redirect URL value when the URL contained certain UTF characters.
+
+## 2.0.36 - 2023-09-08
+
+### Added
+- Added consolidated errors when saving forms in the control panel.
+- Added `beforeInit` and `onApprove` JS events for PayPal.
+- Added Brevo email marketing integration (to replace Sendinblue).
+
+### Fixed
+- Fixed being unable to choose which site a submission is saved in, when editing a submission from the control panel.
+- Fixed element select fields not retaining their values before being saved for the form builder.
+- Fixed Number field not correctly typed in GraphQL mutations.
+- Fixed being unable to choose which site a submission is saved in, when editing a submission from the control panel.
+- Fixed missing translations for Opayo and PayPal’s front-end JS.
+- Fixed an error when creating custom templates.
+- Fixed Friendly Captcha not working correctly for multi-page forms.
+
+### Deprecated
+- Deprecated the Sendinblue integration. Please use the Brevo integration instead.
+
 ## 2.0.35 - 2023-08-31
 
 ### Added
@@ -937,6 +1008,36 @@
 - Removed `enableGatsbyCompatibility` plugin setting, as it's no longer needed.
 - Removed `forms`, `form` and `formCount` from GraphQL queries. Please use `formieForms`, `formieForm` and `formieFormCount`.
 - Removed `submissions`, `submission` and `submissionCount` from GraphQL queries. Please use `formieSubmissions`, `formieSubmission` and `formieSubmissionCount`.
+
+## 1.6.34 - 2023-10-08
+
+### Added
+- Added support for expand parameter on target schemas for Microsoft Dynamics 365 CRM. (thanks @jamesmacwhite).
+
+### Fixed
+- Fixed an issue with Dynamics 365 and Created By value.
+- Fixed query restrictions for system users for Microsoft Dynamics 365 integration.
+
+## 1.6.33 - 2023-09-25
+
+### Added
+- Added “Created By” field mapping for Dynamics 365 CRM integration.
+- Added `Field::getRequiredPlugins()` to better support plugin-dependant fields.
+
+### Changed
+- Updated `isPluginInstalledAndEnabled` check.
+
+### Fixed
+- Fixed Dropdown field throwing errors after changing options from being an `optgroup`.
+- Fixed an error when toggling Dropdown field options from using an optgroup to a default.
+
+## 1.6.32 - 2023-08-31
+
+### Added
+- Added consolidated errors when saving forms in the control panel.
+
+### Fixed
+- Fixed being unable to choose which site a submission is saved in, when editing a submission from the control panel.
 
 ## 1.6.31 - 2023-08-31
 

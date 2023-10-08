@@ -12,6 +12,7 @@ use verbb\formie\fields\formfields\Agree;
 use verbb\formie\helpers\StringHelper;
 use verbb\formie\models\IntegrationField;
 use verbb\formie\models\IntegrationFormSettings;
+use verbb\formie\models\Phone;
 use verbb\formie\models\Token;
 use verbb\formie\records\Integration as IntegrationRecord;
 
@@ -172,6 +173,10 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
             return StringHelper::toBoolean($value);
         }
 
+        if ($integrationField->getType() === IntegrationField::TYPE_PHONE) {
+            return Phone::toPhoneString($value);
+        }
+
         // Return the string representation of it by default (also default for integration fields)
         // You could argue we should return `null`, but let's not be too strict on types.
         return $value;
@@ -236,7 +241,7 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
     public function getEnabled(bool $parse = true): bool|string
     {
         if ($parse) {
-            return App::parseBooleanEnv($this->_enabled);
+            return App::parseBooleanEnv($this->_enabled) ?? false;
         }
 
         return $this->_enabled;
@@ -754,7 +759,8 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
             if (StringHelper::startsWith($mappedFieldValue, '{submission:')) {
                 $mappedFieldValue = str_replace(['{submission:', '}'], ['', ''], $mappedFieldValue);
 
-                return $submission->$mappedFieldValue;
+                // Ensure the submission value is typecasted properly.
+                return static::convertValueForIntegration($submission->$mappedFieldValue, $integrationField);
             }
 
             // Get information about the fields we're mapping to. The field key/handle will be different

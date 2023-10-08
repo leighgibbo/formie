@@ -131,7 +131,7 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
 
             foreach ($this->options() as $option) {
                 if (!empty($option['isDefault'])) {
-                    $value[] = $option['value'];
+                    $value[] = $option['value'] ?? '';
                 }
             }
 
@@ -202,7 +202,7 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
             }
 
             $label = (string)$option['label'];
-            $value = (string)$option['value'];
+            $value = (string)($option['value'] ?? '');
 
             if (isset($labels[$optgroup][$label])) {
                 $option['hasDuplicateLabels'] = true;
