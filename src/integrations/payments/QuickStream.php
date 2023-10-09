@@ -58,6 +58,7 @@ class QuickStream extends Payment
     public ?string $publishableKey = null;
     public ?string $supplierBusinessCode = null;
     public ?string $secretKey = null;
+    public ?bool $isTestGateway = true;
     // public ?string $merchantId = null;
 
 
@@ -112,7 +113,7 @@ class QuickStream extends Payment
             'amountType' => $this->getFieldSetting('amountType'),
             'amountFixed' => $this->getFieldSetting('amountFixed'),
             'amountVariable' => $this->getFieldSetting('amountVariable'),
-            'isTestMode' => $this->getFieldSetting('isTestMode'),
+            'isTestGateway' => $this->getFieldSetting('isTestGateway'),
             'showReference' => $this->getFieldSetting('showReference'),
             'referenceField' => $this->getFieldSetting('referenceField'),
         ];
@@ -305,10 +306,10 @@ class QuickStream extends Payment
         /* QUICKSTREAM API ENDPOINTS */
         // Prod:    'https://api.quickstream.westpac.com.au/rest/v1/'
         // Staging: 'https://api.quickstream.support.qvalent.com/rest/v1/'
-        $isTestMode = $this->getFieldSetting('isTestMode', true);
+        $isTestGateway = $this->getFieldSetting('isTestGateway', true);
 
         return $this->_client = Craft::createGuzzleClient([
-            'base_uri' => ($isTestMode == false)? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/',
+            'base_uri' => ($isTestGateway == false)? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/',
             'auth' => [App::parseEnv($this->secretKey), ''],
         ]);
     }
@@ -329,12 +330,6 @@ class QuickStream extends Payment
                     [['label' => Craft::t('formie', 'Select an option'), 'value' => '']],
                     static::getCurrencyOptions()
                 ),
-            ]),
-            SchemaHelper::lightswitchField([
-                'label' => Craft::t('formie', 'Test Mode'),
-                'help' => Craft::t('formie', 'Enable test mode & payment gateway for sandbox testing.'),
-                'name' => 'isTestMode',
-                'default' => true,
             ]),
             [
                 '$formkit' => 'fieldWrap',

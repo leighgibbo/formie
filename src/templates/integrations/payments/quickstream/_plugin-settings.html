@@ -29,7 +29,7 @@
 
 {{ forms.autosuggestField({
     label: 'Publishable Key' | t('formie'),
-    instructions: 'Enter your {name} Publishable key here.' | t('formie', { name: integration.displayName() }),
+    instructions: 'Enter your {name} Publishable key here.' | t('formie', { name: integration.publishableKey() }),
     name: 'publishableKey',
     required: true,
     suggestEnvVars: true,
@@ -40,7 +40,7 @@
 
 {{ forms.autosuggestField({
     label: 'Secret Key' | t('formie'),
-    instructions: 'Enter your {name} Secret Key here.' | t('formie', { name: integration.displayName() }),
+    instructions: 'Enter your {name} Secret Key here.' | t('formie', { name: integration.secretKey() }),
     name: 'secretKey',
     required: true,
     suggestEnvVars: true,
@@ -51,7 +51,7 @@
 
 {{ forms.autosuggestField({
     label: 'Supplier Business Code' | t('formie'),
-    instructions: 'Enter your {name} Supplier Business Code here.' | t('formie', { name: integration.displayName() }),
+    instructions: 'Enter your {name} Supplier Business Code here.' | t('formie', { name: integration.supplierBusinessCode() }),
     name: 'supplierBusinessCode',
     required: true,
     suggestEnvVars: true,
@@ -60,17 +60,12 @@
     errors: integration.getErrors('supplierBusinessCode'),
 }) }}
 
-<!-- {#
-    TODO: DELETE ME?
-    
-{{ forms.autosuggestField({
-    label: 'Merchant ID' | t('formie'),
-    instructions: 'Enter your {name} Merchant ID here.' | t('formie', { name: integration.displayName() }),
-    name: 'merchantId',
+{{ forms.;ightswitchField({
+    label: 'Test Gateway?' | t('formie'),
+    instructions: 'Is this a test gateway?.' | t('formie', { name: integration.isTestGateway() }),
+    name: 'isTestGateway',
     required: true,
-    suggestEnvVars: true,
-    value: integration.settings.merchantId ?? '',
-    warning: macros.configWarning('merchantId', 'formie'),
-    errors: integration.getErrors('merchantId'),
+    value: integration.settings.isTestGateway ?? true,
+    warning: macros.configWarning('isTestGateway', 'formie'),
+    errors: integration.getErrors('isTestGateway'),
 }) }}
-#} -->
