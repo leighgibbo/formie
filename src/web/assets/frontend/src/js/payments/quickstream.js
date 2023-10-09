@@ -94,7 +94,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         // See more at: https://quickstream.westpac.com.au/docs/quickstreamapi/v1/quickstream-api-js/
 
         const inputStyle = {
-            height: '34px',
+            height: 'auto',
             padding: '0.5rem 0.75rem',
             'font-size': '0.875rem',
             border: '2px solid #c7dfe7',
