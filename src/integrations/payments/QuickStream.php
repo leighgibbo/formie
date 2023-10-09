@@ -112,8 +112,9 @@ class QuickStream extends Payment
             'amountType' => $this->getFieldSetting('amountType'),
             'amountFixed' => $this->getFieldSetting('amountFixed'),
             'amountVariable' => $this->getFieldSetting('amountVariable'),
-            // 'showReference' => $this->getFieldSetting('showReference'),
-            // 'referenceField' => $this->getFieldSetting('referenceField'),
+            'isTestMode' => $this->getFieldSetting('isTestMode'),
+            'showReference' => $this->getFieldSetting('showReference'),
+            'referenceField' => $this->getFieldSetting('referenceField'),
         ];
 
         return [
@@ -176,13 +177,26 @@ class QuickStream extends Payment
                 'supplierBusinessCode' => App::parseEnv($this->supplierBusinessCode),
                 'principalAmount' => $amount,
                 'currency' => 'AUD',
-                // 'customerReferenceNumber' => $submission->id,
                 'metadata' => [
-                    'submissionId' => $submission->id,
+                    'submissionId' => (string) $submission->id,
                 ],
                 'eci' => 'INTERNET',
-                'ipAddress' => Craft::$app->getRequest()->getUserIP() ?? "192.168.1.1",
+                'ipAddress' => Craft::$app->getRequest()->getUserIP(),
             ];
+
+            // Optional customer reference number added to payment if defined in settings:
+            if ($this->getFieldSetting('showReference') && null !== $this->getFieldSetting('referenceField')) {
+                // extract the value from the curly-bracket-wrapped string i.e. "{crnNumber}"
+                $referenceFieldHandle =
+                    StringHelper::removeRight(
+                        StringHelper::removeLeft(
+                            $this->getFieldSetting('referenceField'),
+                    '{'), '}');
+
+                if (null !== $submission->getFieldValue($referenceFieldHandle)) {
+                    $payload['customerReferenceNumber'] = $submission->getFieldValue($referenceFieldHandle);
+                }
+            }
 
             // Raise a `modifySinglePayload` event
             $event = new ModifyPaymentPayloadEvent([
@@ -290,9 +304,10 @@ class QuickStream extends Payment
         /* QUICKSTREAM API ENDPOINTS */
         // Prod:    'https://api.quickstream.westpac.com.au/rest/v1/'
         // Staging: 'https://api.quickstream.support.qvalent.com/rest/v1/'
+        $isTestMode = $this->getFieldSetting('isTestMode', true);
 
         return $this->_client = Craft::createGuzzleClient([
-            'base_uri' => (App::env('ENVIRONMENT') == 'production' || App::env('ENVIRONMENT') == 'live')? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/',
+            'base_uri' => ($isTestMode == false)? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/',
             'auth' => [App::parseEnv($this->secretKey), ''],
         ]);
     }
@@ -313,6 +328,12 @@ class QuickStream extends Payment
                     [['label' => Craft::t('formie', 'Select an option'), 'value' => '']],
                     static::getCurrencyOptions()
                 ),
+            ]),
+            SchemaHelper::lightswitchField([
+                'label' => Craft::t('formie', 'Test Mode'),
+                'help' => Craft::t('formie', 'Enable test mode & payment gateway for sandbox testing.'),
+                'name' => 'isTestMode',
+                'default' => true,
             ]),
             [
                 '$formkit' => 'fieldWrap',
@@ -353,39 +374,35 @@ class QuickStream extends Payment
                     ],
                 ],
             ],
-            // [
-            //     '$formkit' => 'fieldWrap',
-            //     'label' => Craft::t('formie', 'Show Payment Reference Field'),
-            //     // 'help' => Craft::t('formie', 'Allow customers to input a payment reference. This can be derived from a field.'),
-            //     'help' => Craft::t('formie', 'Allow customers to input a payment reference.'),
-            //     'children' => [
-            //         [
-            //             '$el' => 'div',
-            //             'attrs' => [
-            //                 'class' => 'flex',
-            //             ],
-            //             'children' => [
-            //                 SchemaHelper::lightswitchField([
-            //                     // 'label' => Craft::t('formie', 'Field Label'),
-            //                     // 'help' => Craft::t('formie', 'Whether this field should be required when filling out the form.'),
-            //                     'name' => 'showReference',
-            //                 ]),
-            //                 SchemaHelper::fieldSelectField([
-            //                     'name' => 'referenceField',
-            //                     'fieldTypes' => [
-            //                         formfields\Calculations::class,
-            //                         formfields\Dropdown::class,
-            //                         formfields\Hidden::class,
-            //                         formfields\Number::class,
-            //                         formfields\Radio::class,
-            //                         formfields\SingleLineText::class,
-            //                     ],
-            //                     'if' => '$get(showReference).value == ' . true,
-            //                 ]),
-            //             ],
-            //         ],
-            //     ],
-            // ],
+            [
+                '$formkit' => 'fieldWrap',
+                'label' => Craft::t('formie', 'Show Payment Reference Field'),
+                // 'help' => Craft::t('formie', 'Allow customers to input a payment reference. This can be derived from a field.'),
+                'help' => Craft::t('formie', 'Allow customers to input a payment reference.'),
+                'children' => [
+                    [
+                        '$el' => 'div',
+                        'attrs' => [
+                            'class' => 'flex',
+                        ],
+                        'children' => [
+                            SchemaHelper::lightswitchField([
+                                // 'label' => Craft::t('formie', 'Field Label'),
+                                // 'help' => Craft::t('formie', 'Whether this field should be required when filling out the form.'),
+                                'name' => 'showReference',
+                            ]),
+                            SchemaHelper::fieldSelectField([
+                                'name' => 'referenceField',
+                                'help' => Craft::t('formie', 'Please ensure you have added a single-line text field to the form, to reference here.'),
+                                'fieldTypes' => [
+                                    formfields\SingleLineText::class,
+                                ],
+                                'if' => '$get(showReference).value == ' . true,
+                            ]),
+                        ],
+                    ],
+                ],
+            ],
         ];
     }
     

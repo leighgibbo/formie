@@ -20,6 +20,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.publishableKey = settings.publishableKey;
         this.supplierBusinessCode = settings.supplierBusinessCode;
         this.currency = settings.currency;
+        this.isTestMode = settings.isTestMode;
         this.amountType = settings.amountType;
         this.amountFixed = settings.amountFixed;
         this.amountVariable = settings.amountVariable;
@@ -59,12 +60,10 @@ export class FormieQuickStream extends FormiePaymentProvider {
     initField() {
         // Fetch and attach the script only once - this is in case there are multiple forms on the page.
         // They all go to a single callback which resolves its loaded state'
-        // TODO: switch Endpoint based on ENV
         if (!document.getElementById(this.quickstreamScriptId)) {
             const $script = document.createElement('script');
             $script.id = this.quickstreamScriptId;
-            $script.src = 'https://api.quickstream.support.qvalent.com/rest/v1/quickstream-api-1.0.min.js'; // staging
-            // $script.src = 'https://api.quickstream.westpac.com.au/rest/v1/quickstream-api-1.0.min.js'; //prod
+            $script.src = (this.isTestMode == false) ? 'https://api.quickstream.westpac.com.au/rest/v1/quickstream-api-1.0.min.js' : 'https://api.quickstream.support.qvalent.com/rest/v1/quickstream-api-1.0.min.js';
 
             $script.async = true;
             $script.defer = true;
