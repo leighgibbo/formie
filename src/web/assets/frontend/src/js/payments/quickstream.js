@@ -95,10 +95,10 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
         const inputStyle = {
             height: '34px',
-            padding: '0px 12px',
-            'font-size': '14px',
-            border: '1px solid #ccc',
-            'border-radius': '2px',
+            padding: '0.5rem 0.75rem',
+            'font-size': '0.875rem',
+            border: '2px solid #c7dfe7',
+            'border-radius': '0.25rem',
         };
 
         const options = {
