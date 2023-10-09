@@ -20,7 +20,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.publishableKey = settings.publishableKey;
         this.supplierBusinessCode = settings.supplierBusinessCode;
         this.currency = settings.currency;
-        this.isTestMode = settings.isTestMode;
+        this.isTestMode = (typeof settings.isTestMode == 'undefined' || settings.isTestMode == false) ? false : true;
         this.amountType = settings.amountType;
         this.amountFixed = settings.amountFixed;
         this.amountVariable = settings.amountVariable;
@@ -64,6 +64,8 @@ export class FormieQuickStream extends FormiePaymentProvider {
             const $script = document.createElement('script');
             $script.id = this.quickstreamScriptId;
             $script.src = (this.isTestMode == false) ? 'https://api.quickstream.westpac.com.au/rest/v1/quickstream-api-1.0.min.js' : 'https://api.quickstream.support.qvalent.com/rest/v1/quickstream-api-1.0.min.js';
+
+            if (this.isTestMode == true) { console.info(`Quickstream Trusted Frame was loaded in Dev/test mode via ${$script.src}`); }
 
             $script.async = true;
             $script.defer = true;
