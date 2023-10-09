@@ -10,6 +10,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.form = this.$form.form;
         this.$field = settings.$field;
         this.$input = this.$field.querySelector('[data-fui-quickstream-frame]');
+        this.$submitButton = this.form.$form.querySelector('button[type="submit"]');
 
         if (!this.$input) {
             console.error('Unable to find QuickStream form placeholder for [data-fui-quickstream-form]');
@@ -176,8 +177,12 @@ export class FormieQuickStream extends FormiePaymentProvider {
         if (this.trustedFrame) {
             this.trustedFrame.submitForm((errors, data) => {
                 if (errors) {
-                    console.warn(`Error validating Trusted Frame: ${errors}`);
-                    // this.addError('An error occured when processing your payment. Please try again.');
+                    console.warn('Error validating Trusted Frame:', errors);
+                    this.addError('An error occured when processing your payment. Please review and try again.');
+
+                    // reset the submit button (only required if we don't call this.addError() above)
+                    // this.$submitButton.classList.remove('disabled');
+                    // this.$submitButton.removeAttribute('disabled');
                 } else {
                     // all good, append the single use token to the Formie form, and submit
                     // QuickstreamAPI.creditCards.appendTokenToForm(this.form, data.singleUseToken.singleUseTokenId);
