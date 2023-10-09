@@ -146,6 +146,8 @@ class QuickStream extends Payment
     {
         $response = null;
         $result = false;
+        $businessCode = $this->getFieldSetting('supplierBusinessCodeOverride');
+        $businessCode = ("" !== $businessCode && null !== $businessCode)? $businessCode : App::parseEnv($this->supplierBusinessCode);
 
         // Allow events to cancel sending
         if (!$this->beforeProcessPayment($submission)) {
@@ -177,7 +179,7 @@ class QuickStream extends Payment
             $payload = [
                 'transactionType' => 'PAYMENT',
                 'singleUseTokenId' => $quickstreamTokenId,
-                'supplierBusinessCode' => App::parseEnv($this->supplierBusinessCode),
+                'supplierBusinessCode' => $businessCode,
                 'principalAmount' => $amount,
                 'currency' => 'AUD',
                 'metadata' => [
@@ -322,6 +324,12 @@ class QuickStream extends Payment
     public function defineGeneralSchema(): array
     {
         return [
+            SchemaHelper::textField([
+                'label' => Craft::t('formie', '(optional) Supplier Business Code'),
+                'help' => Craft::t('formie', 'If you would like this form to link to a different Supplier Business Code than this gateway\'s default, input the code here.'),
+                'name' => 'supplierBusinessCodeOverride',
+                'validation' => 'alphanumeric',
+            ]),
             SchemaHelper::selectField([
                 'label' => Craft::t('formie', 'Payment Currency'),
                 'help' => Craft::t('formie', 'Provide the currency to be used for the transaction.'),
@@ -374,9 +382,9 @@ class QuickStream extends Payment
             ],
             [
                 '$formkit' => 'fieldWrap',
-                'label' => Craft::t('formie', 'Show Payment Reference Field'),
+                'label' => Craft::t('formie', '(optional) Payment Reference Field'),
                 // 'help' => Craft::t('formie', 'Allow customers to input a payment reference. This can be derived from a field.'),
-                'help' => Craft::t('formie', 'Allow customers to input a payment reference.'),
+                'help' => Craft::t('formie', 'Allow customers to input a payment reference by defining a field in the form.'),
                 'children' => [
                     [
                         '$el' => 'div',
@@ -384,18 +392,12 @@ class QuickStream extends Payment
                             'class' => 'flex',
                         ],
                         'children' => [
-                            SchemaHelper::lightswitchField([
-                                // 'label' => Craft::t('formie', 'Field Label'),
-                                // 'help' => Craft::t('formie', 'Whether this field should be required when filling out the form.'),
-                                'name' => 'showReference',
-                            ]),
                             SchemaHelper::fieldSelectField([
                                 'name' => 'referenceField',
-                                'help' => Craft::t('formie', 'Please ensure you have added a single-line text field to the form, to reference here.'),
+                                'help' => Craft::t('formie', 'Please ensure you have added a single-line text field to the form, to reference here. Leave blank to not use this feature.'),
                                 'fieldTypes' => [
                                     formfields\SingleLineText::class,
                                 ],
-                                'if' => '$get(showReference).value == ' . true,
                             ]),
                         ],
                     ],
