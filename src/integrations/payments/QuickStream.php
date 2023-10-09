@@ -106,6 +106,8 @@ class QuickStream extends Payment
 
         $this->setField($field);
 
+        $isTestGateway = (null == $this->isTestGateway || false == $this->isTestGateway)? false : true;
+
         $settings = [
             'publishableKey' => App::parseEnv($this->publishableKey),
             'supplierBusinessCode' => App::parseEnv($this->supplierBusinessCode),
@@ -113,7 +115,7 @@ class QuickStream extends Payment
             'amountType' => $this->getFieldSetting('amountType'),
             'amountFixed' => $this->getFieldSetting('amountFixed'),
             'amountVariable' => $this->getFieldSetting('amountVariable'),
-            'isTestGateway' => $this->getFieldSetting('isTestGateway'),
+            'isTestGateway' => $isTestGateway,
             'showReference' => $this->getFieldSetting('showReference'),
             'referenceField' => $this->getFieldSetting('referenceField'),
         ];
@@ -306,7 +308,7 @@ class QuickStream extends Payment
         /* QUICKSTREAM API ENDPOINTS */
         // Prod:    'https://api.quickstream.westpac.com.au/rest/v1/'
         // Staging: 'https://api.quickstream.support.qvalent.com/rest/v1/'
-        $isTestGateway = $this->getFieldSetting('isTestGateway', true);
+        $isTestGateway = (null == $this->isTestGateway || false == $this->isTestGateway)? false : true;
 
         return $this->_client = Craft::createGuzzleClient([
             'base_uri' => ($isTestGateway == false)? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/',
