@@ -1,6 +1,6 @@
 {
     "name": "leighgibbo/formie",
-    "description": "Fork of Formie.",
+    "description": "(Simple) Fork of Formie.",
     "type": "craft-plugin",
     "version": "2.0.38",
     "keywords": [
