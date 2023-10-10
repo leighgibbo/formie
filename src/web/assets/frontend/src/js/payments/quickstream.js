@@ -114,7 +114,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
                     border: '1px solid #dedede',
                     'border-radius': '2px',
                     'margin-bottom': '0.75rem',
-                    'min-height': '400px',
+                    'min-height': '420px',
                     padding: '1.5rem',
                     width: '100%',
                     'background-color': 'white',
