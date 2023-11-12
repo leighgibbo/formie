@@ -5,12 +5,15 @@ export class FormieQuickStream extends FormiePaymentProvider {
     constructor(settings = {}) {
         super(settings);
 
+        this.boundEvents = false;
         this.trustedFrame = false;
         this.$form = settings.$form;
         this.form = this.$form.form;
         this.$field = settings.$field;
         this.$input = this.$field.querySelector('[data-fui-quickstream-frame]');
         this.$submitButton = this.form.$form.querySelector('button[type="submit"]');
+
+        this.$csrfToken = this.$form.querySelector('input[name="CRAFT_CSRF_TOKEN"]');
 
         if (!this.$input) {
             console.error('Unable to find QuickStream form placeholder for [data-fui-quickstream-form]');
@@ -20,12 +23,20 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
         this.publishableKey = settings.publishableKey;
         this.supplierBusinessCode = settings.supplierBusinessCode;
+        this.threeDS2Enabled = settings.threeDS2Enabled || false;
         this.currency = settings.currency;
         this.isTestGateway = (typeof settings.isTestGateway == 'undefined' || settings.isTestGateway == false) ? false : true;
         this.amountType = settings.amountType;
         this.amountFixed = settings.amountFixed;
         this.amountVariable = settings.amountVariable;
         this.quickstreamScriptId = 'FORMIE_QUICKSTREAM_SCRIPT';
+
+        this.challengeFrame = false;
+        this.challengeOptions = {
+            challengeWindowSize: '04',
+            challengeMode: 'callback',
+            // challengeMode: 'post',
+        };
 
         if (!this.publishableKey) {
             console.error('Missing publishableKey for QuickStream.');
@@ -53,9 +64,10 @@ export class FormieQuickStream extends FormiePaymentProvider {
         this.onAfterSubmit();
 
         // Remove unique event listeners
-        // TODO: review this works
+        // TODO: review these work
         this.form.removeEventListener(eventKey('onFormiePaymentValidate', 'quickstream'));
         this.form.removeEventListener(eventKey('onAfterFormieSubmit', 'quickstream'));
+        this.form.removeEventListener(eventKey('FormiePaymentQuickstream3DS', 'quickstream'));
     }
 
     initField() {
@@ -85,13 +97,43 @@ export class FormieQuickStream extends FormiePaymentProvider {
         }
 
         // Attach custom event listeners on the form
-        // TODO: Review this works
-        this.form.addEventListener(this.$form, eventKey('onFormiePaymentValidate', 'quickstream'), this.onValidate.bind(this));
-        this.form.addEventListener(this.$form, eventKey('onAfterFormieSubmit', 'quickstream'), this.onAfterSubmit.bind(this));
+        if (!this.boundEvents) {
+            // TODO: Review this works
+            this.form.addEventListener(this.$form, eventKey('onFormiePaymentValidate', 'quickstream'), this.onValidate.bind(this));
+            this.form.addEventListener(this.$form, eventKey('onAfterFormieSubmit', 'quickstream'), this.onAfterSubmit.bind(this));
+            this.form.addEventListener(this.$form, eventKey('FormiePaymentQuickstream3DS', 'quickstream'), this.onValidate3DS.bind(this));
+
+            this.boundEvents = true;
+        }
+    }
+
+    /**
+     * required if the form is configured to also use 3D Secure, and the card being used is also enrolled
+     * - this is an additional security check that can sometimes trigger an additional challenge step
+     */
+    request3DSecureAuth(singleUseTokenId) {
+        console.log('launching 3D Secure auth request');
+
+        return fetch('/actions/formie/integrations/quickstream/request-3d-secure-auth', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                singleUseTokenId,
+                CRAFT_CSRF_TOKEN: this.$csrfToken.value,
+                params: {
+                    principalAmount: Number(this.form.$form.elements['fields[paymentAmount]'].value) ?? null,
+                    email: this.form.$form.elements['fields[emailAddress]'].value ?? null,
+                    acctID: this.form.$form.elements['fields[customerReferenceNumber]'].value ?? null,
+                },
+            }),
+        });
     }
 
     mountTrustedFrame() {
         // See more at: https://quickstream.westpac.com.au/docs/quickstreamapi/v1/quickstream-api-js/
+        console.log('mounting card with 3Dsecure set to', this.threeDS2Enabled);
 
         const inputStyle = {
             height: 'auto',
@@ -104,6 +146,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
         const options = {
             config: {
                 supplierBusinessCode: this.supplierBusinessCode, // This is a required config option
+                threeDS2: this.threeDS2Enabled,
             },
             iframe: {
                 width: '100%',
@@ -159,11 +202,25 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
     }
 
+    mountChallengeFrame() {
+        console.log('mounting challenge frame');
+        QuickstreamAPI.creditCards.createChallengeFrame(this.challengeOptions, (errors, data) => {
+            if (errors) {
+                // Handle errors here
+                console.error('Error creating challenge frame:', errors);
+                throw new Error('Error creating challenge frame');
+            } else {
+                this.challengeFrame = data;
+                console.log('Challenge frame created', this.challengeFrame);
+            }
+        });
+        console.log('challenge frame mounted');
+    }
+
     onValidate(e) {
         // Don't validate if we're not submitting (going back, saving)
         // Check if the form has an invalid flag set, don't bother going further
         // options = https://quickstream.westpac.com.au/docs/quickstreamapi/v1/quickstream-api-js/#trustedframeconfigobject
-
         if (this.form.submitAction !== 'submit' || e.detail.invalid) {
             return;
         }
@@ -176,17 +233,83 @@ export class FormieQuickStream extends FormiePaymentProvider {
 
         if (this.trustedFrame) {
             this.trustedFrame.submitForm((errors, data) => {
-                if (errors) {
+
+                // keep the token handy
+                const theToken = data.singleUseToken.singleUseTokenId ?? false;
+
+                if (errors || !theToken) {
                     console.warn('Error validating Trusted Frame:', errors);
                     this.addError('An error occured when processing your payment. Please review and try again.');
-
                     // reset the submit button (only required if we don't call this.addError() above)
                     // this.$submitButton.classList.remove('disabled');
                     // this.$submitButton.removeAttribute('disabled');
+
+                } else if (typeof data.singleUseToken.creditCard.threeDS2AuthRequired !== 'undefined' && data.singleUseToken.creditCard.threeDS2AuthRequired) {
+                    // Additional 3D Secure check required:
+                    console.log('additonal 3D Secure check required');
+
+                    const threeDSresponse = this.request3DSecureAuth(theToken)
+                        .then((response) => {
+                            if (response.status !== 200) {
+                                console.warn('Error requesting 3D Secure Auth:', response);
+                                this.addError('An error occured when processing your payment. Please review and try again.');
+                            } else {
+                                return response.json();
+                            }
+                        })
+                        .then((threeDsecureResponse) => {
+
+                            switch (threeDsecureResponse.threeDsStatus) {
+                                case 'frictionless':
+                                    console.log('3D Secure frictionless', theToken, this.submitHandler);
+                                    // all good, append the single use token to the Formie form, and submit
+                                    this.updateInputs('quickstreamTokenId', theToken);
+                                    this.submitHandler.submitForm();
+                                    return true;
+
+                                case 'challenge':
+                                    // 3D Secure challenge required
+                                    console.log('3D Secure challenge required');
+
+                                    this.challengeOptions.singleUseTokenId = theToken;
+
+                                    // append some callbacks to the challenge options
+                                    this.challengeOptions.onSuccess = () => {
+                                        // remove the challenge iframe and handle success
+                                        this.challengeFrame.destroy();
+                                        this.updateInputs('quickstreamTokenId', theToken);
+                                        this.submitHandler.submitForm();
+                                    },
+                                    this.challengeOptions.onFailure = () => {
+                                        // remove the challenge iframe and handle failure
+                                        this.challengeFrame.destroy();
+                                    };
+
+                                    // console.log('here?', this.challengeOptions, QuickstreamAPI.creditCards.createChallengeFrame);
+                                    this.mountChallengeFrame();
+
+                                    break;
+
+                                case 'failed':
+                                case 'error':
+                                    // 3D Secure failed - return false
+                                    console.log('3D Secure failed');
+                                    throw new Error('3D Secure failed');
+
+                            }
+
+                        })
+                        .catch((error) => {
+                            console.warn('Error requesting 3D Secure Auth:', error);
+                            this.addError('An error occured when processing your payment. Please review and try again.');
+                        });
+
                 } else {
+                    // No additional 3D Secure check required:
+                    console.log('no additional 3D Secure check required');
                     // all good, append the single use token to the Formie form, and submit
                     // QuickstreamAPI.creditCards.appendTokenToForm(this.form, data.singleUseToken.singleUseTokenId);
-                    this.updateInputs('quickstreamTokenId', data.singleUseToken.singleUseTokenId);
+                    this.updateInputs('quickstreamTokenId', theToken);
                     this.submitHandler.submitForm();
                 }
             });
@@ -194,6 +317,10 @@ export class FormieQuickStream extends FormiePaymentProvider {
         } else {
             console.error('Credit Card Frame is invalid.');
         }
+    }
+
+    onValidate3DS(e) {
+        // console.log('onValidate3DS', e.detail);
     }
 
     onAfterSubmit(e) {

@@ -28,6 +28,8 @@ use craft\web\Response;
 use yii\base\Event;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException as GuzzleRequestException;
+use GuzzleHttp\Exception\ClientException as GuzzleClientException;
 
 use Throwable;
 use Exception;
@@ -50,7 +52,6 @@ class QuickStream extends Payment
     {
         return Craft::t('formie', 'Westpac QuickStream');
     }
-    
 
     // Properties
     // =========================================================================
@@ -111,6 +112,7 @@ class QuickStream extends Payment
         $settings = [
             'publishableKey' => App::parseEnv($this->publishableKey),
             'supplierBusinessCode' => App::parseEnv($this->supplierBusinessCode),
+            'threeDS2Enabled' => $this->getFieldSetting('threeDS2Enabled') ?? false,
             'currency' => $this->getFieldSetting('currency'),
             'amountType' => $this->getFieldSetting('amountType'),
             'amountFixed' => $this->getFieldSetting('amountFixed'),
@@ -138,7 +140,7 @@ class QuickStream extends Payment
 
         return $rules;
     }
-
+    
     /**
      * @inheritDoc
      */
@@ -187,6 +189,7 @@ class QuickStream extends Payment
                 ],
                 'eci' => 'INTERNET',
                 'ipAddress' => Craft::$app->getRequest()->getUserIP(),
+                'threeDS2' => (bool) $this->getFieldSetting('threeDS2Enabled') ?? false,
             ];
 
             // Optional customer reference number added to payment if defined in settings:
@@ -284,6 +287,116 @@ class QuickStream extends Payment
 
         return $result;
     }
+    
+    /**
+     * Triggered with JS, via the '/actions/formie/integrations/quickstream/request-3d-secure-auth' endpoint,
+     * via the 'actionRequest3dSecureAuth' method in src/controllers/integrations/QuickstreamController.php
+     * 
+     * @param string $tokenId The single-use token ID
+     * @param array $params The params from the request, for 3D Secure to check
+     */
+    public function request3DSecureAuth($tokenId, $params): Response
+    {
+        $response = new Response();
+        $response->format = Response::FORMAT_JSON;
+
+        // grab all req'd env's and ensure they are set:
+        $publishableKey = App::env('QUICKSTREAM_PUBLISHABLE_KEY');
+        $secretKey = App::env('QUICKSTREAM_SECRET_KEY');
+        $supplierBusinessCode = App::env('QUICKSTREAM_SUPPLIER_BUSINESS_CODE');
+
+        if (!$publishableKey || !$secretKey || !$supplierBusinessCode) {
+            $response->statusCode = 500;
+            $response->data = [
+                'threeDsStatus' => null,
+                'success' => false,
+                'message' => 'Missing environment variables for 3D Secure',
+            ];
+
+            return $response;
+        }
+
+        if (!isset($params['principalAmount']) || !isset($params['email']) || !isset($params['acctID'])) {
+            $missing = array_merge([], (!isset($params['principalAmount'])) ? ['principalAmount'] : []);
+            $missing = array_merge($missing, (!isset($params['email'])) ? ['email'] : []);
+            $missing = array_merge($missing, (!isset($params['acctID'])) ? ['acctID'] : []);
+
+            $response->statusCode = 400;
+            $response->data = [
+                'threeDsStatus' => null,
+                'success' => false,
+                'message' => 'Missing '. implode(", ",$missing) .' for 3D Secure',
+            ];
+
+            return $response;
+        }
+
+        // send the params to "/single-use-tokens/{singleUseTokenId}/three-ds2-authentication" for 3DS validation
+        // https://api.quickstream.westpac.com.au/rest/v1/single-use-tokens/{singleUseTokenId}/three-ds2-authentication
+
+        // If successful, this method returns a 3D Secure Authentication Response Model in the response body.
+        try {
+            $threeDsResponse = $this->request('POST', 'single-use-tokens/' . $tokenId . '/three-ds2-authentication', [
+                'auth' => [$secretKey, ''],
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'Accept'     => 'application/json',
+                ],
+                'json' => [
+                    'messageCategory' => '01',
+                    'threeDSRequestorAuthenticationInd' => '01',
+                    'currency' => 'AUD',
+                    'principalAmount' => $params['principalAmount'],
+                    'email' => $params['email'],
+                    'acctID' => $params['acctID'],
+                ]
+            ]);
+
+            // get the 'transStatus' from the response body and switch on it:
+            switch (($threeDsResponse['transStatus'] ?? null)) {
+                case 'A':
+                case 'Y':
+                    // 3DS Frictionless Flow
+                    $response->data['threeDsStatus'] = "frictionless";
+                    $response->data['success'] = true;
+                    $response->statusCode = 200;
+                    break;
+                case 'C':
+                    // 3DS Challenge Flow
+                    $response->data['threeDsStatus'] = "challenge";
+                    $response->data['success'] = false;
+                    $response->statusCode = 200;
+                    break;
+                case 'N':
+                case 'R':
+                case 'U':
+                    // 3DS Authentication Failed
+                    $response->data['threeDsStatus'] = "failed";
+                    $response->data['success'] = false;
+                    $response->statusCode = 400;
+                    break;
+                default:
+                    // 3DS Authentication error
+                    $response->data['threeDsStatus'] = "error";
+                    $response->data['success'] = false;
+                    $response->statusCode = 500;
+                    break;
+            }
+
+        } catch (GuzzleRequestException | GuzzleClientException $e) {
+            $response->data['threeDsStatus'] = "error";
+            $response->data['success'] = false;
+            $response->data['message'] = "A request error occured" . $e->getMessage();
+            $response->statusCode = $e->getCode();
+        } catch (Exception $e) {
+            $response->data['threeDsStatus'] = "error";
+            $response->data['success'] = false;
+            $response->data['message'] = $e->getMessage();
+            $response->statusCode = 500;
+        }
+
+        return $response;
+    }
 
     /**
      * @inheritDoc
@@ -329,6 +442,11 @@ class QuickStream extends Payment
                 'help' => Craft::t('formie', 'If you would like this form to link to a different Supplier Business Code than this gateway\'s default, input the code here.'),
                 'name' => 'supplierBusinessCodeOverride',
                 'validation' => 'alphanumeric',
+            ]),
+            SchemaHelper::lightswitchField([
+                'label' => Craft::t('formie', 'Enable 3D Secure?'),
+                'help' => Craft::t('formie', 'Should this form use 3D Secure?'),
+                'name' => 'threeDS2Enabled',
             ]),
             SchemaHelper::selectField([
                 'label' => Craft::t('formie', 'Payment Currency'),
