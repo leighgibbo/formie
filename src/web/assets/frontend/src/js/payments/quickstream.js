@@ -230,16 +230,19 @@ export class FormieQuickStream extends FormiePaymentProvider {
             this.trustedFrame.submitForm((errors, data) => {
 
                 // keep the token handy
-                const theToken = data.singleUseToken.singleUseTokenId ?? false;
+                const theToken = (typeof data?.singleUseToken?.singleUseTokenId !== 'undefined') ? data.singleUseToken.singleUseTokenId : false;
 
                 if (errors || !theToken) {
-                    console.warn('Error validating Trusted Frame:', errors);
-                    this.addError('An error occured when processing your payment. Please review and try again.');
-                    // reset the submit button (only required if we don't call this.addError() above)
-                    // this.$submitButton.classList.remove('disabled');
-                    // this.$submitButton.removeAttribute('disabled');
+                    // console.warn('Error validating Trusted Frame:', errors);
+                    // this.addError('An error occured when processing your payment. Please review and try again.');
 
-                } else if (typeof data.singleUseToken.creditCard.threeDS2AuthRequired !== 'undefined' && data.singleUseToken.creditCard.threeDS2AuthRequired) {
+                    // reset the submit button (only required if we don't call this.addError() above)
+                    this.$submitButton.classList.remove('disabled', 'fui-loading');
+                    this.$submitButton.removeAttribute('disabled');
+
+                } else if (typeof data?.singleUseToken?.creditCard?.threeDS2AuthRequired !== 'undefined' && data.singleUseToken.creditCard.threeDS2AuthRequired) {
+                    console.log('got to 3dsecure validation');
+
                     // Additional 3D Secure check required:
                     const threeDSresponse = this.request3DSecureAuth(theToken)
                         .then((response) => {
@@ -295,6 +298,8 @@ export class FormieQuickStream extends FormiePaymentProvider {
                         });
 
                 } else {
+
+                    console.log('got to validated - ready to submit.');
                     // No additional 3D Secure check required:
                     // all good, append the single use token to the Formie form, and submit
                     this.updateInputs('quickstreamTokenId', theToken);
