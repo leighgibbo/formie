@@ -262,8 +262,14 @@ class QuickStream extends Payment
 
             Integration::apiError($this, $e, $this->throwApiError);
 
-            // $submission->addError($field->handle, Craft::t('formie', $e->getMessage()));
-            $submission->addError($field->handle, Craft::t('formie', 'A payment error occured, please try again.'));
+            $reason = "";
+            if (null !== $e->getMessage())
+                $reason .= $e->getMessage();
+
+            if (isset($response['responseDescription']))
+                $reason .= $response['responseDescription'];
+
+            $submission->addError($field->handle, Craft::t('formie', 'A payment error occured - ' . $reason ));
             
             $payment = new PaymentModel();
             $payment->integrationId = $this->id;
