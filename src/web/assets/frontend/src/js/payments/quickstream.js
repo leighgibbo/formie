@@ -241,17 +241,11 @@ export class FormieQuickStream extends FormiePaymentProvider {
                     this.$submitButton.removeAttribute('disabled');
 
                 } else if (typeof data?.singleUseToken?.creditCard?.threeDS2AuthRequired !== 'undefined' && data.singleUseToken.creditCard.threeDS2AuthRequired) {
-                    console.log('got to 3dsecure validation');
 
                     // Additional 3D Secure check required:
                     const threeDSresponse = this.request3DSecureAuth(theToken)
                         .then((response) => {
-                            if (response.status !== 200) {
-                                console.warn('Error requesting 3D Secure Auth:', response);
-                                this.addError('An error occured when processing your payment. Please review and try again.');
-                            } else {
-                                return response.json();
-                            }
+                            return response.json();
                         })
                         .then((threeDsecureResponse) => {
 
@@ -288,20 +282,20 @@ export class FormieQuickStream extends FormiePaymentProvider {
                                 case 'error':
                                     // 3D Secure failed - return false
                                     threeDsMsg = threeDsecureResponse.message || 'Your payment was not successful. Please try a different payment method.';
-                                    console.error('3D Secure failed');
-                                    this.addError(errMsg);
-                                    throw new Error('3D Secure failed');
+                                    this.addError(threeDsMsg);
+                                    // throw new Error('3D Secure failed');
+                                    break;
                             }
+
+                            return true;
 
                         })
                         .catch((error) => {
-                            console.warn('Error requesting 3D Secure Auth:', error);
-                            this.addError('An error occured when processing your payment. Please review and try again.');
+                            // this.addError('An error occured when processing your payment. Please review and try again.');
+                            console.error('Error validating 3D Secure:', error);
                         });
 
                 } else {
-
-                    console.log('got to validated - ready to submit.');
                     // No additional 3D Secure check required:
                     // all good, append the single use token to the Formie form, and submit
                     this.updateInputs('quickstreamTokenId', theToken);
