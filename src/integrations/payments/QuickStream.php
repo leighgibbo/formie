@@ -272,6 +272,9 @@ class QuickStream extends Payment
             if (isset($response['responseDescription']))
                 $reason .= '('.$response['responseDescription'].')';
 
+            if (isset($response['fraudGuardResult']) && $response['fraudGuardResult'] !== "")
+                $reason .= ' - '.$response['fraudGuardResult'];
+
             $submission->addError($field->handle, Craft::t('formie', 'A payment error occured - ' . $reason ));
             
             $payment = new PaymentModel();
