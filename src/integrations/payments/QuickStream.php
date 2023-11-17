@@ -371,12 +371,14 @@ class QuickStream extends Payment
                     // 3DS Frictionless Flow
                     $response->data['threeDsStatus'] = "frictionless";
                     $response->data['success'] = true;
+                    $response->data['message'] = "3D Secure Authentication successful";
                     $response->statusCode = 200;
                     break;
                 case 'C':
                     // 3DS Challenge Flow
                     $response->data['threeDsStatus'] = "challenge";
                     $response->data['success'] = false;
+                    $response->data['message'] = "3D Secure Authentication additional challenge required";
                     $response->statusCode = 200;
                     break;
                 case 'N':
@@ -385,12 +387,14 @@ class QuickStream extends Payment
                     // 3DS Authentication Failed
                     $response->data['threeDsStatus'] = "failed";
                     $response->data['success'] = false;
+                    $response->data['message'] = "3D Secure Authentication Failed - Your payment could not be processed. Please review and try again.";
                     $response->statusCode = 400;
                     break;
                 default:
                     // 3DS Authentication error
                     $response->data['threeDsStatus'] = "error";
                     $response->data['success'] = false;
+                    $response->data['message'] = "3D Secure Authentication Failed - Your payment could not be processed. Please review and try again.";
                     $response->statusCode = 500;
                     break;
             }

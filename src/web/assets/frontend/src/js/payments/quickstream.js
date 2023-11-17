@@ -255,6 +255,8 @@ export class FormieQuickStream extends FormiePaymentProvider {
                         })
                         .then((threeDsecureResponse) => {
 
+                            let threeDsMsg;
+
                             switch (threeDsecureResponse.threeDsStatus) {
                                 case 'frictionless':
                                     // all good, append the single use token to the Formie form, and submit
@@ -276,7 +278,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
                                     this.challengeOptions.onFailure = () => {
                                         // remove the challenge iframe and handle failure
                                         this.challengeFrame.destroy();
-                                        this.addError('Your payment was not processed. Please refresh this page and try again.');
+                                        this.addError('3D secure authentication failed.  Your payment could not be processed.  Please review and try again.');
                                     };
                                     this.mountChallengeFrame();
 
@@ -285,10 +287,10 @@ export class FormieQuickStream extends FormiePaymentProvider {
                                 case 'failed':
                                 case 'error':
                                     // 3D Secure failed - return false
+                                    threeDsMsg = threeDsecureResponse.message || 'Your payment was not successful. Please try a different payment method.';
                                     console.error('3D Secure failed');
-                                    this.addError('Your payment was not successful. Please try a different payment method.');
+                                    this.addError(errMsg);
                                     throw new Error('3D Secure failed');
-
                             }
 
                         })
