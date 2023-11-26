@@ -422,7 +422,7 @@ class HubSpot extends Crm
                 }
 
                 // Extract some values that shouldn't be part of the form payload
-                $formPayload['context']['pageUri'] = ArrayHelper::remove($formValues, 'pageUri') ?? $this->referrer;
+                $formPayload['context']['pageUri'] = ArrayHelper::remove($formValues, 'pageUri') ?? $this->context['referrer'] ?? null;
                 $formPayload['context']['pageName'] = ArrayHelper::remove($formValues, 'pageName');
 
                 foreach ($formValues as $key => $value) {
@@ -437,15 +437,14 @@ class HubSpot extends Crm
                     ];
                 }
 
-                // Setup Hubspot's context
-                // TODO: change this when we refactor integrations to allow arbitrary storing of extra data at submission time
-                $hutk = $formValues['trackingID'] ?? $_COOKIE['hubspotutk'] ?? '';
+                // Setup Hubspot's context, if we're mapping it, or if it's automatically saved in context
+                $hutk = $formValues['trackingID'] ?? $this->context['hubspotutk'] ?? '';
 
                 if ($hutk) {
                     $formPayload['context']['hutk'] = $hutk;
                 }
 
-                $formPayload['context']['ipAddress'] = $this->ipAddress;
+                $formPayload['context']['ipAddress'] = $this->context['ipAddress'] ?? null;
 
                 [$portalId, $formGuid] = explode('__', $this->formId);
 

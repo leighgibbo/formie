@@ -201,11 +201,8 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
     public ?string $uid = null;
     public ?string $optInField = null;
 
-    // Used to retain the referrer URL from submissions
-    public ?string $referrer = '';
-
-    // Used to retain the referrer IP from submissions
-    public ?string $ipAddress = '';
+    // Store extra context for when running the integration
+    public array $context = [];
 
     protected ?Client $_client = null;
 
@@ -658,6 +655,16 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
         $this->trigger(static::EVENT_MODIFY_FIELD_MAPPING_VALUES, $event);
 
         return $event->fieldValues;
+    }
+
+    public function populateContext(): void
+    {
+        // Add some extra values to integrations to record in the context of being run
+        // Useful to maintain the referrer, current site, etc - things that aren't possible in a queue.
+        $this->context = [
+            'referrer' => $this->request->getReferrer(),
+            'ipAddress' => $this->request->getUserIP(),
+        ];
     }
 
     public function beforeSendPayload(Submission $submission, &$endpoint, &$payload, &$method): bool
