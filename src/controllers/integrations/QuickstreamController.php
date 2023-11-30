@@ -41,8 +41,9 @@ class QuickstreamController extends Controller
     {
         $tokenId = $request->getParam('singleUseTokenId');
         $params = $request->getParam('params');
+        $liveMode = $request->getParam('liveMode') ?? false;
 
         $quickstreamIntegration = new QuickStream();
-        return $quickstreamIntegration->request3DSecureAuth($tokenId, $params);
+        return $quickstreamIntegration->request3DSecureAuth($tokenId, $params, $liveMode);
     }
 }

@@ -125,6 +125,7 @@ export class FormieQuickStream extends FormiePaymentProvider {
                     email: this.form.$form.elements['fields[emailAddress]'].value ?? null,
                     acctID: this.form.$form.elements['fields[customerReferenceNumber]'].value ?? null,
                 },
+                liveMode: !this.isTestGateway,
             }),
         });
     }

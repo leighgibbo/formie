@@ -306,8 +306,9 @@ class QuickStream extends Payment
      * 
      * @param string $tokenId The single-use token ID
      * @param array $params The params from the request, for 3D Secure to check
+     * @param array $liveMode Whether to process the reqwuest using the live gateway or not
      */
-    public function request3DSecureAuth($tokenId, $params): Response
+    public function request3DSecureAuth($tokenId, $params, $liveMode): Response
     {
         $response = new Response();
         $response->format = Response::FORMAT_JSON;
@@ -318,8 +319,7 @@ class QuickStream extends Payment
         $supplierBusinessCode = App::env('QUICKSTREAM_SUPPLIER_BUSINESS_CODE');
 
         // grab the isTestGateway prop from the integration settings, and pass the baseUri accordingly (as this seems to fail when relying)
-        $isTestGateway = (null == $this->isTestGateway || false == $this->isTestGateway)? false : true;
-        $baseUri = ($isTestGateway == false)? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/';
+        $baseUri = ($liveMode)? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/';
 
         if (!$publishableKey || !$secretKey || !$supplierBusinessCode) {
             $response->statusCode = 500;
