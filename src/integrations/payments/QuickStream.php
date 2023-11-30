@@ -317,6 +317,10 @@ class QuickStream extends Payment
         $secretKey = App::env('QUICKSTREAM_SECRET_KEY');
         $supplierBusinessCode = App::env('QUICKSTREAM_SUPPLIER_BUSINESS_CODE');
 
+        // grab the isTestGateway prop from the integration settings, and pass the baseUri accordingly (as this seems to fail when relying)
+        $isTestGateway = (null == $this->isTestGateway || false == $this->isTestGateway)? false : true;
+        $baseUri = ($isTestGateway == false)? 'https://api.quickstream.westpac.com.au/rest/v1/' : 'https://api.quickstream.support.qvalent.com/rest/v1/';
+
         if (!$publishableKey || !$secretKey || !$supplierBusinessCode) {
             $response->statusCode = 500;
             $response->data = [
@@ -349,6 +353,7 @@ class QuickStream extends Payment
         // If successful, this method returns a 3D Secure Authentication Response Model in the response body.
         try {
             $threeDsResponse = $this->request('POST', 'single-use-tokens/' . $tokenId . '/three-ds2-authentication', [
+                'base_uri' => $baseUri,
                 'auth' => [$secretKey, ''],
                 'headers' => [
                     'Content-Type' => 'application/json',
