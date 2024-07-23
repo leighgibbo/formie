@@ -181,7 +181,7 @@ export class FormieDatePicker {
 
     getDisabledWeekdays(date) {
         if (this.availableDaysOfWeek !== '*') {
-            return (this.availableDaysOfWeek.includes(date.getDay().toString())) ? false : true;
+            return (this.availableDaysOfWeek.includes(date.getDay())) ? false : true;
         }
 
         return false;
