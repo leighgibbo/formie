@@ -37,6 +37,7 @@ class Entry extends Element
     // =========================================================================
 
     public ?int $entryTypeId = null;
+    public ?int $entryTypeUid = null;
     public int|array|null $defaultAuthorId = null;
     public ?bool $createDraft = null;
 
@@ -57,7 +58,7 @@ class Entry extends Element
         $rules = parent::defineRules();
 
         // Validate the following when saving form settings
-        $rules[] = [['entryTypeId', 'defaultAuthorId'], 'required', 'on' => [Integration::SCENARIO_FORM]];
+        $rules[] = [['entryTypeUid', 'defaultAuthorId'], 'required', 'on' => [Integration::SCENARIO_FORM]];
 
         // Find the field for the entry type - a little trickier due to nested in sections
         $fields = $this->_getEntryTypeSettings()->fields ?? [];
@@ -86,7 +87,7 @@ class Entry extends Element
                 $fields = $this->getFieldLayoutFields($entryType->getFieldLayout());
 
                 $customFields[$section->name][] = new IntegrationCollection([
-                    'id' => $entryType->id,
+                    'id' => $entryType->uid,
                     'name' => $entryType->name,
                     'fields' => $fields,
                 ]);
@@ -198,16 +199,16 @@ class Entry extends Element
 
     public function sendPayload(Submission $submission): IntegrationResponse|bool
     {
-        if (!$this->entryTypeId) {
-            Integration::error($this, Craft::t('formie', 'Unable to save element integration. No `entryTypeId`.'), true);
+        if (!$this->entryTypeUid) {
+            Integration::error($this, Craft::t('formie', 'Unable to save element integration. No `entryTypeUid`.'), true);
 
             return false;
         }
 
         try {
-            $entryType = Craft::$app->getSections()->getEntryTypeById($this->entryTypeId);
+            $entryType = Craft::$app->getSections()->getEntryTypeByUid($this->entryTypeUid);
 
-            $entry = $this->getElementForPayload(EntryElement::class, $this->entryTypeId, $submission, [
+            $entry = $this->getElementForPayload(EntryElement::class, $entryType->id, $submission, [
                 'typeId' => $entryType->id,
                 'sectionId' => $entryType->sectionId,
             ]);
@@ -363,7 +364,7 @@ class Entry extends Element
         $entryTypes = $this->getFormSettingValue('elements');
 
         foreach ($entryTypes as $key => $entryType) {
-            if ($collection = ArrayHelper::firstWhere($entryType, 'id', $this->entryTypeId)) {
+            if ($collection = ArrayHelper::firstWhere($entryType, 'uid', $this->entryTypeUid)) {
                 return $collection;
             }
         }
