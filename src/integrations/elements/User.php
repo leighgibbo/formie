@@ -38,6 +38,7 @@ class User extends Element
     // =========================================================================
 
     public array $groupIds = [];
+    public array $groupUids = [];
     public bool $activateUser = false;
     public bool $mergeUserGroups = false;
     public bool $sendActivationEmail = true;
@@ -197,8 +198,8 @@ class User extends Element
                 $userGroups = $user->getGroups();
             }
 
-            foreach ($this->groupIds as $groupId) {
-                if ($group = Craft::$app->getUserGroups()->getGroupById($groupId)) {
+            foreach ($this->groupUids as $groupUid) {
+                if ($group = Craft::$app->getUserGroups()->getGroupByUid($groupUid)) {
                     $userGroups[] = $group;
                 }
             }
@@ -347,7 +348,7 @@ class User extends Element
         foreach (Craft::$app->getUserGroups()->getAllGroups() as $key => $group) {
             $userGroups[] = [
                 'label' => $group->name,
-                'value' => $group->id,
+                'value' => $group->uid,
             ];
         }
 

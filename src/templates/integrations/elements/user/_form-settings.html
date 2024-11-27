@@ -7,7 +7,7 @@
 {% set activateUser = form.settings.integrations[handle].activateUser ?? false %}
 {% set mergeUserGroups = form.settings.integrations[handle].mergeUserGroups ?? false %}
 {% set sendActivationEmail = form.settings.integrations[handle].sendActivationEmail ?? false %}
-{% set groupIds = form.settings.integrations[handle].groupIds ?? [] %}
+{% set groupUids = form.settings.integrations[handle].groupUids ?? [] %}
 
 <field-select
     label="{{ 'Opt-In Field' | t('formie') }}"
@@ -24,10 +24,10 @@
         {{ macros.proxyField(fieldVariables, 'checkboxSelectField', {
             label: 'User Group' | t('formie'),
             instructions: 'Select user groups to assign this new user to.' | t('formie'),
-            id: 'groupIds',
-            name: 'groupIds',
+            id: 'groupUids',
+            name: 'groupUids',
             options: integration.getGroupOptions(),
-            values: groupIds,
+            values: groupUids,
         }) }}
 
         {{ macros.proxyField(fieldVariables, 'lightswitchField', {
