@@ -3,6 +3,7 @@ namespace verbb\formie\migrations;
 
 use verbb\formie\elements\Form;
 use verbb\formie\fields\formfields\Date;
+use verbb\formie\integrations\elements\User as UserIntegration;
 
 use Craft;
 use craft\db\Migration;
@@ -20,20 +21,25 @@ class m241128_000000_user_group_integrations extends Migration
      */
     public function safeUp(): bool
     {
-        $forms = (new Query())
+        $userIntegrations = (new Query())
             ->select(['*'])
-            ->from('{{%formie_forms}}')
+            ->from(['{{%formie_integrations}}'])
+            ->where(['type' => UserIntegration::class])
             ->all();
 
-        foreach ($forms as $form) {
-            $updatedSettings = false;
-            $settings = Json::decode($form['settings']);
-            $integrations = $settings['integrations'] ?? [];
-            $userIntegration = $integrations['user'] ?? [];
-            
-            if ($userIntegration) {
+        foreach ($userIntegrations as $userIntegration) {
+            $forms = (new Query())
+                ->select(['*'])
+                ->from(['{{%formie_forms}}'])
+                ->all();
+
+            foreach ($forms as $form) {
+                $updatedSettings = false;
                 $groupUids = [];
-                $groupIds = $userIntegration['groupIds'] ?? [];
+
+                $settings = Json::decode($form['settings']);
+                $userIntegrationSettings = $settings['integrations'][$userIntegration['handle']] ?? [];
+                $groupIds = $userIntegrationSettings['groupIds'] ?? [];
 
                 if (is_array($groupIds)) {
                     foreach ($groupIds as $groupId) {
@@ -44,7 +50,7 @@ class m241128_000000_user_group_integrations extends Migration
                 }
 
                 if ($groupUids) {
-                    $settings['integrations']['user']['groupUids'] = $groupUids;
+                    $settings['integrations'][$userIntegration['handle']]['groupUids'] = $groupUids;
                     $updatedSettings = true;
                 }
             }

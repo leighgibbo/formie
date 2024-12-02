@@ -3,6 +3,7 @@ namespace verbb\formie\migrations;
 
 use verbb\formie\elements\Form;
 use verbb\formie\fields\formfields\Date;
+use verbb\formie\integrations\elements\Entry as EntryIntegration;
 
 use Craft;
 use craft\db\Migration;
@@ -20,33 +21,41 @@ class m241128_100000_entry_integrations extends Migration
      */
     public function safeUp(): bool
     {
-        $forms = (new Query())
+        $entryIntegrations = (new Query())
             ->select(['*'])
-            ->from('{{%formie_forms}}')
+            ->from(['{{%formie_integrations}}'])
+            ->where(['type' => EntryIntegration::class])
             ->all();
 
-        foreach ($forms as $form) {
-            $updatedSettings = false;
-            $settings = Json::decode($form['settings']);
-            $integrations = $settings['integrations'] ?? [];
-            $entryIntegration = $integrations['entry'] ?? [];
-            
-            if ($entryIntegration) {
-                $entryTypeUid = null;
-                $entryTypeId = $entryIntegration['entryTypeId'] ?? null;
+        foreach ($entryIntegrations as $entryIntegration) {
+            $forms = (new Query())
+                ->select(['*'])
+                ->from(['{{%formie_forms}}'])
+                ->all();
 
-                if ($entryTypeId) {
-                    $entryTypeUid = Db::uidById(Table::ENTRYTYPES, $entryTypeId);
+            foreach ($forms as $form) {
+                $updatedSettings = false;
+                $settings = Json::decode($form['settings']);
+                $entryIntegrationSettings = $settings['integrations'][$entryIntegration['handle']] ?? [];
+                $entryTypeId = $entryIntegrationSettings['entryTypeId'] ?? null;
+                
+                if ($entryIntegration) {
+                    $entryTypeUid = null;
+                    $entryTypeId = $entryIntegration['entryTypeId'] ?? null;
+
+                    if ($entryTypeId) {
+                        $entryTypeUid = Db::uidById(Table::ENTRYTYPES, $entryTypeId);
+                    }
+
+                    if ($entryTypeUid) {
+                        $settings['integrations'][$entryIntegration['handle']]['entryTypeUid'] = $entryTypeUid;
+                        $updatedSettings = true;
+                    }
                 }
 
-                if ($entryTypeUid) {
-                    $settings['integrations']['entry']['entryTypeUid'] = $entryTypeUid;
-                    $updatedSettings = true;
+                if ($updatedSettings) {
+                    $this->update('{{%formie_forms}}', ['settings' => Json::encode($settings)], ['id' => $form['id']]);
                 }
-            }
-
-            if ($updatedSettings) {
-                $this->update('{{%formie_forms}}', ['settings' => Json::encode($settings)], ['id' => $form['id']]);
             }
         }
 
