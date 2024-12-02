@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.35 - 2024-12-03
+
+### Fixed
+- Fix User and Entry element integration settings migration.
+
 ## 2.1.34 - 2024-12-02
 
 ### Fixed
