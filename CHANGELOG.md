@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.34 - 2024-12-02
+
+### Fixed
+- Fix an error when saving integration settings for forms.
+- Fix User element integrations not using UIDs for the target groups.
+- Fix Entry element integrations not using UIDs for the target entry type.
+- Fix an issue with User element integration and the “Send Activation Email” setting.
+- Fix checkbox select fields field settings not retaining their value.
+
 ## 2.1.33 - 2024-11-13
 
 ### Added
