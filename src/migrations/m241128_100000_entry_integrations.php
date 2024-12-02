@@ -35,22 +35,19 @@ class m241128_100000_entry_integrations extends Migration
 
             foreach ($forms as $form) {
                 $updatedSettings = false;
+                $entryTypeUid = null;
+
                 $settings = Json::decode($form['settings']);
                 $entryIntegrationSettings = $settings['integrations'][$entryIntegration['handle']] ?? [];
                 $entryTypeId = $entryIntegrationSettings['entryTypeId'] ?? null;
-                
-                if ($entryIntegration) {
-                    $entryTypeUid = null;
-                    $entryTypeId = $entryIntegration['entryTypeId'] ?? null;
 
-                    if ($entryTypeId) {
-                        $entryTypeUid = Db::uidById(Table::ENTRYTYPES, $entryTypeId);
-                    }
+                if ($entryTypeId) {
+                    $entryTypeUid = Db::uidById(Table::ENTRYTYPES, $entryTypeId);
+                }
 
-                    if ($entryTypeUid) {
-                        $settings['integrations'][$entryIntegration['handle']]['entryTypeUid'] = $entryTypeUid;
-                        $updatedSettings = true;
-                    }
+                if ($entryTypeUid) {
+                    $settings['integrations'][$entryIntegration['handle']]['entryTypeUid'] = $entryTypeUid;
+                    $updatedSettings = true;
                 }
 
                 if ($updatedSettings) {
