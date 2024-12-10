@@ -150,7 +150,7 @@ class SupportController extends Controller
             //
             try {
                 $formExport = ImportExportHelper::generateFormExport($form);
-                $json = Json::encode($formExport, JSON_PRETTY_PRINT | JSON_NUMERIC_CHECK);
+                $json = Json::encode($formExport, JSON_PRETTY_PRINT);
 
                 $tempFileForm = $backupPath . '/' . StringHelper::toLowerCase('formie_' . gmdate('ymd_His') . '.json');
                 FileHelper::writeToFile($tempFileForm, $json);

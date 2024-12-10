@@ -224,7 +224,7 @@ class ImportExportController extends Controller
         $formElement = Formie::$plugin->getForms()->getFormById($formId);
 
         $data = ImportExportHelper::generateFormExport($formElement);
-        $json = Json::encode($data, JSON_PRETTY_PRINT | JSON_NUMERIC_CHECK);
+        $json = Json::encode($data, JSON_PRETTY_PRINT);
 
         Craft::$app->getResponse()->sendContentAsFile($json, 'formie-' . $formElement->handle . '-' . StringHelper::UUID() . '.json');
 
