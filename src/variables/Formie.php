@@ -358,7 +358,8 @@ class Formie
         $plugins = [];
 
         if (FormiePlugin::$plugin->getService()->isPluginInstalledAndEnabled('freeform')) {
-            $plugins['migrate/freeform'] = ['title' => Craft::t('formie', 'Freeform')];
+            $plugins['migrate/freeform4'] = ['title' => Craft::t('formie', 'Freeform 4')];
+            $plugins['migrate/freeform5'] = ['title' => Craft::t('formie', 'Freeform 5')];
         }
 
         if (FormiePlugin::$plugin->getService()->isPluginInstalledAndEnabled('sprout-forms')) {

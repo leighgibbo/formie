@@ -45,7 +45,7 @@ use Solspace\Freeform\Elements\Submission as FreeformSubmission;
 use Solspace\Freeform\Library\Composer\Components\Fields\DataContainers\Option;
 use Solspace\Freeform\Notifications\Types\Admin\Admin;
 
-class MigrateFreeform extends Migration
+class MigrateFreeform5 extends Migration
 {
     // Constants
     // =========================================================================
