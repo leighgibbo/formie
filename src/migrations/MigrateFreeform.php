@@ -2,46 +2,49 @@
 namespace verbb\formie\migrations;
 
 use verbb\formie\Formie;
-use verbb\formie\base\FormFieldInterface;
-use verbb\formie\elements\Form;
+use verbb\formie\base\FormFieldInterface as FormieFieldInterface;
+use verbb\formie\elements\Form as FormieForm;
 use verbb\formie\elements\Submission;
 use verbb\formie\events\ModifyMigrationFieldEvent;
 use verbb\formie\events\ModifyMigrationFormEvent;
 use verbb\formie\events\ModifyMigrationNotificationEvent;
 use verbb\formie\events\ModifyMigrationSubmissionEvent;
-use verbb\formie\fields\formfields;
+use verbb\formie\fields\formfields as formiefields;
+use verbb\formie\helpers\ArrayHelper;
+use verbb\formie\helpers\StringHelper;
 use verbb\formie\helpers\Variables;
 use verbb\formie\models\FieldLayout;
 use verbb\formie\models\FieldLayoutPage;
+use verbb\formie\models\FieldLayoutRow;
 use verbb\formie\models\Notification;
 use verbb\formie\models\Settings;
 use verbb\formie\positions\Hidden as HiddenPosition;
 use verbb\formie\prosemirror\toprosemirror\Renderer;
 
 use Craft;
+use craft\console\Controller;
 use craft\db\Migration;
 use craft\elements\Asset;
-use craft\helpers\ArrayHelper;
 use craft\helpers\Console;
 use craft\helpers\Json;
 
+use DateTime;
+use DateTimeZone;
 use Throwable;
 
 use yii\base\InvalidConfigException;
-use yii\console\Controller;
 use yii\helpers\Markdown;
 
 use Solspace\Freeform\Freeform;
-use Solspace\Freeform\Models\FormModel;
+use Solspace\Freeform\Attributes\Property\Implementations\Options\OptionCollection;
+use Solspace\Freeform\Bundles\Notifications\Providers\NotificationsProvider;
+use Solspace\Freeform\Fields\FieldInterface as FreeformFieldInterfae;
+use Solspace\Freeform\Fields\Implementations as freeformfields;
+use Solspace\Freeform\Form\Form as FreeformForm;
 use Solspace\Freeform\Elements\Submission as FreeformSubmission;
-use Solspace\Freeform\Library\Composer\Components\FieldInterface;
 use Solspace\Freeform\Library\Composer\Components\Fields\DataContainers\Option;
-use Solspace\Freeform\Fields as freeformfields;
-use Solspace\Freeform\Fields\SubmitField;
+use Solspace\Freeform\Notifications\Types\Admin\Admin;
 
-/**
- * Migrates Freeform forms, notifications and submissions.
- */
 class MigrateFreeform extends Migration
 {
     // Constants
@@ -58,8 +61,8 @@ class MigrateFreeform extends Migration
 
     public ?int $formId = null;
 
-    private ?FormModel $_freeformForm = null;
-    private ?Form $_form = null;
+    private ?FreeformForm $_freeformForm = null;
+    private ?FormieForm $_form = null;
     private ?array $_reservedHandles = null;
     private ?Controller $_consoleRequest = null;
 
@@ -67,9 +70,6 @@ class MigrateFreeform extends Migration
     // Public Methods
     // =========================================================================
 
-    /**
-     * @inheritdoc
-     */
     public function safeUp(): bool
     {
         $this->_reservedHandles = Formie::$plugin->getFields()->getReservedHandles();
@@ -84,20 +84,17 @@ class MigrateFreeform extends Migration
         return true;
     }
 
-    /**
-     * @inheritdoc
-     */
     public function safeDown(): bool
     {
         return false;
     }
 
-    public function setConsoleRequest($value)
+    public function setConsoleRequest($value): void
     {
         $this->_consoleRequest = $value;
     }
 
-    private function _migrateForm(): ?Form
+    private function _migrateForm(): ?FormieForm
     {
         /* @var Settings $settings */
         $settings = Formie::$plugin->getSettings();
@@ -107,11 +104,11 @@ class MigrateFreeform extends Migration
         $this->stdout("Form: Preparing to migrate form “{$freeformForm->handle}”.");
 
         try {
-            $form = new Form();
+            $form = new FormieForm();
             $form->title = $freeformForm->name;
             $form->handle = $this->_getHandle($freeformForm);
-            $form->settings->submissionTitleFormat = $freeformForm->submissionTitleFormat != '{{ dateCreated|date("Y-m-d H:i:s") }}' ? $freeformForm->submissionTitleFormat : '';
-            $form->settings->submitMethod = $freeformForm->getForm()->isAjaxEnabled() ? 'ajax' : 'page-reload';
+            $form->settings->submissionTitleFormat = $freeformForm->submissionTitle != '{{ dateCreated|date("Y-m-d H:i:s") }}' ? $freeformForm->submissionTitle : '';
+            $form->settings->submitMethod = $freeformForm->isAjaxEnabled() ? 'ajax' : 'page-reload';
             $form->settings->submitActionUrl = $freeformForm->returnUrl;
             $form->settings->submitAction = 'url';
 
@@ -165,7 +162,9 @@ class MigrateFreeform extends Migration
                     }
                 }
             } else {
-                $this->stdout("    > Form “{$form->handle}” migrated.", Console::FG_GREEN);
+                $this->stdout("    > Form “{$form->handle}” (#{$form->id}) migrated.", Console::FG_GREEN);
+
+                $transaction->commit();
             }
         } catch (Throwable $e) {
             $this->stdout("    > Failed to migrate “{$freeformForm->handle}”.", Console::FG_RED);
@@ -195,15 +194,17 @@ class MigrateFreeform extends Migration
         }
 
         foreach ($entries as $entry) {
+            $now = new DateTime('now', new DateTimeZone(Craft::$app->getTimeZone()));
+
             /* @var FreeformSubmission $entry */
             $submission = new Submission();
-            $submission->title = $entry->title;
+            $submission->title = $now->format('D, d M Y H:i:s');
             $submission->setForm($this->_form);
             $submission->setStatus($status);
             $submission->dateCreated = $entry->dateCreated;
             $submission->dateUpdated = $entry->dateUpdated;
 
-            foreach ($entry as $field) {
+            foreach ($entry->getFieldCollection() as $field) {
                 // Parse the handle for a few things just in case
                 $handle = $this->_getFieldHandle($field->getHandle(), false);
 
@@ -227,23 +228,7 @@ class MigrateFreeform extends Migration
                             // Not implemented
                             break;
 
-                        case freeformfields\DynamicRecipientField::class:
-                            // Not implemented
-                            break;
-
                         case freeformfields\HtmlField::class:
-                            // Not implemented
-                            break;
-
-                        case freeformfields\MailingListField::class:
-                            // Not implemented
-                            break;
-
-                        case freeformfields\RecaptchaField::class:
-                            // Not implemented
-                            break;
-
-                        case SubmitField::class:
                             // Not implemented
                             break;
 
@@ -315,63 +300,67 @@ class MigrateFreeform extends Migration
     {
         $settings = Formie::$plugin->getSettings();
 
-        $props = $this->_freeformForm->getForm()->getAdminNotificationProperties();
-        if ($props && $notificationId = $props->getNotificationId()) {
-            $notification = Freeform::getInstance()->notifications->getNotificationById($notificationId);
+        $notificationsProvider = Craft::$container->get(NotificationsProvider::class);
+        $notifications = $notificationsProvider->getByFormAndClass($this->_freeformForm, Admin::class);
+
+        if ($notifications) {
             $this->stdout("Notifications: Preparing to migrate notification.");
 
-            try {
-                $newNotification = new Notification();
-                $newNotification->formId = $this->_form->id;
-                $newNotification->name = $notification->name;
-                $newNotification->subject = $notification->getSubject();
-                $newNotification->recipients = 'email';
-                $newNotification->to = str_replace(PHP_EOL, ',', $props->getRecipients());
-                $newNotification->cc = $notification->getCc();
-                $newNotification->bcc = $notification->getBcc();
-                $newNotification->from = $notification->getFromEmail();
-                $newNotification->fromName = $notification->getFromName();
-                $newNotification->replyTo = $notification->getReplyToEmail();
-                $newNotification->attachFiles = $notification->isIncludeAttachmentsEnabled();
-                $newNotification->enabled = true;
+            foreach ($notifications as $notification) {
+                try {
+                    $newNotification = new Notification();
+                    $newNotification->formId = $this->_form->id;
+                    $newNotification->name = $notification->getName();
+                    $newNotification->subject = $notification->getTemplate()->getSubject();
+                    $newNotification->recipients = 'email';
+                    $newNotification->to = implode(',', $notification->getRecipients()->emailsToArray());
+                    $newNotification->cc = $notification->getTemplate()->getCc();
+                    $newNotification->bcc = $notification->getTemplate()->getBcc();
+                    $newNotification->from = $notification->getTemplate()->getFromEmail();
+                    $newNotification->fromName = $notification->getTemplate()->getFromName();
+                    $newNotification->replyTo = $notification->getTemplate()->getReplyToEmail();
+                    $newNotification->attachFiles = $notification->getTemplate()->isIncludeAttachments();
+                    $newNotification->enabled = true;
 
-                // Set default template
-                if ($templateId = $settings->getDefaultEmailTemplateId()) {
-                    $newNotification->templateId = $templateId;
-                }
+                    // Set default template
+                    if ($templateId = $settings->getDefaultEmailTemplateId()) {
+                        $newNotification->templateId = $templateId;
+                    }
 
-                $body = $this->_tokenizeNotificationBody($notification->getBodyText());
-                $newNotification->content = Json::encode($body);
+                    $body = $this->_tokenizeNotificationBody($notification->getTemplate()->getBody());
+                    $newNotification->content = Json::encode($body);
 
-                // Fire a 'modifyNotification' event
-                $event = new ModifyMigrationNotificationEvent([
-                    'form' => $this->_form,
-                    'notification' => $notification,
-                    'newNotification' => $newNotification,
-                ]);
-                $this->trigger(self::EVENT_MODIFY_NOTIFICATION, $event);
+                    // Fire a 'modifyNotification' event
+                    $event = new ModifyMigrationNotificationEvent([
+                        'form' => $this->_form,
+                        'notification' => $notification,
+                        'newNotification' => $newNotification,
+                    ]);
+                    $this->trigger(self::EVENT_MODIFY_NOTIFICATION, $event);
 
-                if (!$event->isValid) {
-                    $this->stdout("    > Skipped notification due to event cancellation.", Console::FG_YELLOW);
-                    return;
-                }
+                    if (!$event->isValid) {
+                        $this->stdout("    > Skipped notification due to event cancellation.", Console::FG_YELLOW);
+                        continue;
+                    }
 
-                if (Formie::$plugin->getNotifications()->saveNotification($event->newNotification)) {
-                    $this->stdout("    > Migrated notification “{$notification->name}”. You may need to check the notification body.", Console::FG_GREEN);
-                } else {
-                    $this->stdout("    > Failed to save notification “{$notification->name}”.", Console::FG_RED);
+                    if (Formie::$plugin->getNotifications()->saveNotification($event->newNotification)) {
+                        $this->stdout("    > Migrated notification “{$notification->getName()}”. You may need to check the notification body.", Console::FG_GREEN);
+                    } else {
+                        $this->stdout("    > Failed to save notification “{$notification->getName()}”.", Console::FG_RED);
 
-                    foreach ($notification->getErrors() as $attr => $errors) {
-                        foreach ($errors as $error) {
-                            $this->stdout("    > $attr: $error", Console::FG_RED);
+                        foreach ($event->newNotification->getErrors() as $attr => $errors) {
+                            foreach ($errors as $error) {
+                                $this->stdout("    > $attr: $error", Console::FG_RED);
+                            }
                         }
                     }
-                }
-            } catch (Throwable $e) {
-                $this->stdout("    > Failed to migrate “{$notification->name}”.", Console::FG_RED);
-                $this->stdout("    > `{$this->getExceptionTraceAsString($e)}`", Console::FG_RED);
+                } catch (Throwable $e) {
+                    $this->stdout("    > Failed to migrate “{$notification->getName()}”.", Console::FG_RED);
+                    $this->stdout("    > `{$e->getMessage()}`", Console::FG_RED);
+                    $this->stdout("    > `{$this->getExceptionTraceAsString($e)}`", Console::FG_RED);
 
-                return;
+                    continue;
+                }
             }
         } else {
             $this->stdout("    > No notifications to migrate.", Console::FG_YELLOW);
@@ -380,7 +369,7 @@ class MigrateFreeform extends Migration
         $this->stdout("    > All notifications completed.", Console::FG_GREEN);
     }
 
-    private function _getHandle(FormModel $form): string
+    private function _getHandle(FreeformForm $form): string
     {
         $increment = 1;
         $handle = $form->handle;
@@ -395,7 +384,7 @@ class MigrateFreeform extends Migration
         }
 
         while (true) {
-            if (!Form::find()->handle($handle)->exists()) {
+            if (!FormieForm::find()->handle($handle)->exists()) {
                 return $handle;
             }
 
@@ -409,12 +398,7 @@ class MigrateFreeform extends Migration
         }
     }
 
-    /**
-     * @param FormModel $form
-     * @return FieldLayout
-     * @noinspection PhpDocMissingThrowsInspection
-     */
-    private function _buildFieldLayout(FormModel $form): FieldLayout
+    private function _buildFieldLayout(FreeformForm $form): FieldLayout
     {
         $fieldLayout = new FieldLayout(['type' => Form::class]);
         $fieldLayout->type = Form::class;
@@ -429,7 +413,6 @@ class MigrateFreeform extends Migration
             $newPage->sortOrder = '' . $pageIndex;
 
             $pageFields = [];
-            $fieldHashes = [];
 
             foreach ($page->getRows() as $rowIndex => $row) {
                 foreach ($row as $fieldIndex => $field) {
@@ -468,16 +451,6 @@ class MigrateFreeform extends Migration
                             $newField->rowIndex = $rowIndex;
                             $pageFields[] = $newField;
                             $fields[] = $newField;
-                            $fieldHashes[] = $field->getHash();
-                        }
-                    } else if (get_class($field) === SubmitField::class) {
-                        $newPage->settings->buttonsPosition = $field->getPosition();
-                        $newPage->settings->submitButtonLabel = $field->getLabelNext();
-                        $newPage->settings->backButtonLabel = $field->getLabelPrev();
-                        $newPage->settings->showBackButton = !$field->isDisablePrev();
-
-                        if ($newPage->settings->buttonsPosition === 'spread') {
-                            $newPage->settings->buttonsPosition = 'left-right';
                         }
                     } else {
                         $this->stdout("    > Failed to migrate field “{$field->getHandle()}” on form “{$form->handle}”. Unsupported field.", Console::FG_RED);
@@ -485,52 +458,12 @@ class MigrateFreeform extends Migration
                 }
             }
 
-            // Migrate any hidden fields excluded from the layout.
-            foreach ($this->_freeformForm->getLayout()->getFields() as $field) {
-                if ($field->getPageIndex() != $pageIndex) {
-                    continue;
-                }
-
-                if (in_array($field->getHash(), $fieldHashes)) {
-                    continue;
-                }
-
-                if ($newField = $this->_mapField($field)) {
-                    // Fire a 'modifyField' event
-                    $event = new ModifyMigrationFieldEvent([
-                        'form' => $this->_form,
-                        'originForm' => $form,
-                        'field' => $field,
-                        'newField' => $newField,
-                    ]);
-                    $this->trigger(self::EVENT_MODIFY_FIELD, $event);
-
-                    $newField = $event->newField;
-
-                    if (!$event->isValid) {
-                        $this->stdout("    > Skipped field “{$newField->handle}” due to event cancellation.", Console::FG_YELLOW);
-                        continue;
-                    }
-
-                    $newField->validate();
-
-                    if ($newField->hasErrors()) {
-                        $this->stdout("    > Failed to save field “{$newField->handle}”.", Console::FG_RED);
-
-                        foreach ($newField->getErrors() as $attr => $errors) {
-                            foreach ($errors as $error) {
-                                $this->stdout("    > $attr: $error", Console::FG_RED);
-                            }
-                        }
-                    } else {
-                        $newField->sortOrder = 0;
-                        $newField->rowIndex = count($pageFields);
-                        $pageFields[] = $newField;
-                        $fields[] = $newField;
-                        $fieldHashes[] = $field->getHash();
-                    }
-                }
+            if ($page->getButtons()->isBack()) {
+                $newPage['settings']['showBackButton'] = true;
             }
+
+            $newPage['settings']['submitButtonLabel'] = $page->getButtons()->getSubmitLabel();
+            $newPage['settings']['backButtonLabel'] = $page->getButtons()->getBackLabel();
 
             $newPage->setLayout($fieldLayout);
             $newPage->setCustomFields($pageFields);
@@ -543,17 +476,12 @@ class MigrateFreeform extends Migration
         return $fieldLayout;
     }
 
-    /**
-     * @param FieldInterface $field
-     * @return FormFieldInterface|null
-     * @throws InvalidConfigException
-     */
-    private function _mapField(FieldInterface $field): ?FormFieldInterface
+    private function _mapField(FreeformFieldInterfae $field): ?FormieFieldInterface
     {
         switch (get_class($field)) {
             case freeformfields\CheckboxField::class:
                 /* @var freeformfields\CheckboxField $field */
-                $newField = new formfields\Agree();
+                $newField = new formiefields\Agree();
                 $this->_applyFieldDefaults($newField);
 
                 $description = (new Renderer)->render('<p>' . $field->getLabel() . '</p>');
@@ -566,7 +494,7 @@ class MigrateFreeform extends Migration
 
             case freeformfields\Pro\ConfirmationField::class:
                 // We want to ensure *this* field is the same as the target field, so grab that type    
-                $targetField = $this->_freeformForm->getLayout()->getFieldByHash($field->getTargetFieldHash());
+                $targetField = $field->getTargetField();
                 $targetFormieField = $this->_mapField($targetField);
 
                 if ($targetFormieField) {
@@ -580,9 +508,9 @@ class MigrateFreeform extends Migration
 
                 break;
 
-            case freeformfields\CheckboxGroupField::class:
-                /* @var freeformfields\CheckboxGroupField $field */
-                $newField = new formfields\Checkboxes();
+            case freeformfields\CheckboxesField::class:
+                /* @var freeformfields\CheckboxesField $field */
+                $newField = new formiefields\Checkboxes();
                 $this->_applyFieldDefaults($newField);
 
                 $newField->options = $this->_mapOptions($field->getOptions());
@@ -591,13 +519,9 @@ class MigrateFreeform extends Migration
                 $newField->defaultValue = null;
                 break;
 
-            case freeformfields\DynamicRecipientField::class:
-                // Not implemented
-                return null;
-
             case freeformfields\Pro\DatetimeField::class:
-                /* @var freeformfields\CheckboxGroupField $field */
-                $newField = new formfields\Date();
+                /* @var freeformfields\DatetimeField $field */
+                $newField = new formiefields\Date();
                 $this->_applyFieldDefaults($newField);
 
                 if ($field->getDateTimeType() === 'both') {
@@ -625,17 +549,18 @@ class MigrateFreeform extends Migration
 
             case freeformfields\EmailField::class:
                 /* @var freeformfields\EmailField $field */
-                $newField = new formfields\Email();
+                $newField = new formiefields\Email();
                 $this->_applyFieldDefaults($newField);
                 break;
 
             case freeformfields\FileUploadField::class:
                 /* @var freeformfields\FileUploadField $field */
-                $newField = new formfields\FileUpload();
+                $newField = new formiefields\FileUpload();
                 $this->_applyFieldDefaults($newField);
 
-                $source = $field->getAssetSourceId();
-                if ($source = Craft::$app->getAssets()->getRootFolderByVolumeId($source)) {
+                $sourceId = $field->getAssetSourceId();
+
+                if ($sourceId && $source = Craft::$app->getAssets()->getRootFolderByVolumeId($sourceId)) {
                     $newField->uploadLocationSource = "folder:{$source->getVolume()->uid}";
                 } else if ($volumes = Craft::$app->getVolumes()->getAllVolumes()) {
                     $newField->uploadLocationSource = "folder:{$volumes[0]->uid}";
@@ -648,7 +573,7 @@ class MigrateFreeform extends Migration
 
             case freeformfields\HiddenField::class:
                 /* @var freeformfields\HiddenField $field */
-                $newField = new formfields\Hidden();
+                $newField = new formiefields\Hidden();
                 $this->_applyFieldDefaults($newField);
 
                 $newField->defaultValue = $field->getValue();
@@ -656,30 +581,26 @@ class MigrateFreeform extends Migration
 
             case freeformfields\HtmlField::class:
                 /* @var freeformfields\HtmlField $field */
-                $newField = new formfields\Html();
+                $newField = new formiefields\Html();
                 $this->_applyFieldDefaults($newField);
 
-                $newField->name = $field->getLabel();
+                $newField->label = $field->getLabel();
                 $newField->handle = $field->getHash();
                 $newField->htmlContent = $field->getValue();
                 $newField->labelPosition = HiddenPosition::class;
                 break;
 
             case freeformfields\Pro\InvisibleField::class:
-                /* @var freeformfields\HiddenField $field */
-                $newField = new formfields\Hidden();
+                /* @var freeformfields\Pro\InvisibleField $field */
+                $newField = new formiefields\Hidden();
                 $this->_applyFieldDefaults($newField);
 
                 $newField->defaultValue = $field->getValue();
                 break;
 
-            case freeformfields\MailingListField::class:
-                // Not implemented
-                return null;
-
             case freeformfields\MultipleSelectField::class:
                 /* @var freeformfields\MultipleSelectField $field */
-                $newField = new formfields\Dropdown();
+                $newField = new formiefields\Dropdown();
                 $this->_applyFieldDefaults($newField);
 
                 $newField->setMultiple(true);
@@ -691,7 +612,7 @@ class MigrateFreeform extends Migration
 
             case freeformfields\NumberField::class:
                 /* @var freeformfields\NumberField $field */
-                $newField = new formfields\Number();
+                $newField = new formiefields\Number();
                 $this->_applyFieldDefaults($newField);
 
                 if ($min = $field->getMinValue()) {
@@ -706,15 +627,15 @@ class MigrateFreeform extends Migration
                 break;
 
             case freeformfields\Pro\PhoneField::class:
-                /* @var freeformfields\TextField $field */
-                $newField = new formfields\Phone();
+                /* @var freeformfields\Pro\PhoneField $field */
+                $newField = new formiefields\Phone();
 
                 $this->_applyFieldDefaults($newField);
                 break;
 
-            case freeformfields\RadioGroupField::class:
-                /* @var freeformfields\RadioGroupField $field */
-                $newField = new formfields\Radio();
+            case freeformfields\RadiosField::class:
+                /* @var freeformfields\RadiosField $field */
+                $newField = new formiefields\Radio();
                 $this->_applyFieldDefaults($newField);
 
                 $newField->layout = $field->isOneLine() ? 'horizontal' : 'vertical';
@@ -724,13 +645,9 @@ class MigrateFreeform extends Migration
                 $newField->defaultValue = null;
                 break;
 
-            case freeformfields\RecaptchaField::class:
-                // Not implemented
-                return null;
-
-            case freeformfields\SelectField::class:
-                /* @var freeformfields\SelectField $field */
-                $newField = new formfields\Dropdown();
+            case freeformfields\DropdownField::class:
+                /* @var freeformfields\DropdownField $field */
+                $newField = new formiefields\Dropdown();
                 $this->_applyFieldDefaults($newField);
 
                 $newField->options = $this->_mapOptions($field->getOptions());
@@ -739,21 +656,17 @@ class MigrateFreeform extends Migration
                 $newField->defaultValue = null;
                 break;
 
-            case SubmitField::class:
-                // Not implemented
-                return null;
-
             case freeformfields\Pro\TableField::class:
                 /* @var freeformfields\TableField $field */
-                $newField = new formfields\Table();
+                $newField = new formiefields\Table();
                 $newField->addRowLabel = $field->getAddButtonLabel();
 
                 foreach ($field->getTableLayout() as $key => $row) {
                     $newField->columns[$key] = [
                         'id' => 'col' . ($key + 1),
-                        'heading' => $row['label'] ?? '',
-                        'handle' => $row['value'] ?? '',
-                        'type' => $row['type'] ?? 'singleline',
+                        'heading' => $row->label ?? '',
+                        'handle' => StringHelper::toCamelCase($row->value ?? ''),
+                        'type' => $row->type ?? 'singleline',
                     ];
                 }
 
@@ -761,7 +674,7 @@ class MigrateFreeform extends Migration
 
             case freeformfields\TextareaField::class:
                 /* @var freeformfields\TextareaField $field */
-                $newField = new formfields\MultiLineText();
+                $newField = new formiefields\MultiLineText();
 
                 if ($field->getMaxLength()) {
                     $newField->limit = true;
@@ -774,7 +687,7 @@ class MigrateFreeform extends Migration
 
             case freeformfields\TextField::class:
                 /* @var freeformfields\TextField $field */
-                $newField = new formfields\SingleLineText();
+                $newField = new formiefields\SingleLineText();
 
                 if ($field->getMaxLength()) {
                     $newField->limit = true;
@@ -786,8 +699,8 @@ class MigrateFreeform extends Migration
                 break;
 
             case freeformfields\Pro\WebsiteField::class:
-                /* @var freeformfields\TextField $field */
-                $newField = new formfields\SingleLineText();
+                /* @var freeformfields\Pro\WebsiteField $field */
+                $newField = new formiefields\SingleLineText();
 
                 $this->_applyFieldDefaults($newField);
                 break;
@@ -822,7 +735,7 @@ class MigrateFreeform extends Migration
             }
         }
 
-        if (!$newField instanceof formfields\Address and !$newField instanceof formfields\Name) {
+        if (!$newField instanceof formiefields\Address and !$newField instanceof formiefields\Name) {
             $newField->required = (bool)($field->isRequired() ?? false);
         }
 
@@ -854,29 +767,23 @@ class MigrateFreeform extends Migration
         return $newHandle;
     }
 
-    private function _applyFieldDefaults(FormFieldInterface $field): void
+    private function _applyFieldDefaults(FormieFieldInterface $field): void
     {
-        $defaults = $field->getAllFieldDefaults();
-        Craft::configure($field, $defaults);
+
     }
 
-    /**
-     * @param Option[] $options
-     * @return array
-     */
-    private function _mapOptions(array $options): array
+    private function _mapOptions(OptionCollection $collection): array
     {
-        if (!$options) {
+        if (!$collection) {
             return [];
         }
 
         return array_values(array_map(function($option) {
             return [
-                'isDefault' => $option->isChecked(),
                 'label' => $option->getLabel(),
                 'value' => $option->getValue(),
             ];
-        }, $options));
+        }, $collection->getOptions()));
     }
 
     private function _tokenizeNotificationBody($body): array
