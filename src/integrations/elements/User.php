@@ -282,20 +282,41 @@ class User extends Element
 
             if ($user->getStatus() == UserElement::STATUS_PENDING) {
                 if ($this->activateUser) {
-                    Craft::$app->getUsers()->activateUser($user);
+                    if (!Craft::$app->getUsers()->activateUser($user)) {
+                        Integration::error($this, Craft::t('formie', 'Unable to activate user for “{type}” element integration. Error: {error}.', [
+                            'type' => $this->handle,
+                            'error' => Json::encode($user->getErrors()),
+                        ]), true);
+
+                        return false;
+                    }
 
                     $autoLogin = true;
                 }
 
                 if ($this->sendActivationEmail) {
-                    Craft::$app->getUsers()->sendActivationEmail($user);
+                    if (!Craft::$app->getUsers()->sendActivationEmail($user)) {
+                        Integration::error($this, Craft::t('formie', 'Unable to send user activation email for “{type}” element integration. Error: {error}.', [
+                            'type' => $this->handle,
+                            'error' => Json::encode($user->getErrors()),
+                        ]), true);
+
+                        return false;
+                    }
                 }
             }
 
             if ($userGroups) {
                 $groupIds = ArrayHelper::getColumn($userGroups, 'id');
 
-                Craft::$app->getUsers()->assignUserToGroups($user->id, $groupIds);
+                if (!Craft::$app->getUsers()->assignUserToGroups($user->id, $groupIds)) {
+                    Integration::error($this, Craft::t('formie', 'Unable to assign user groups for “{type}” element integration. Error: {error}.', [
+                            'type' => $this->handle,
+                            'error' => Json::encode($user->getErrors()),
+                        ]), true);
+
+                        return false;
+                }
             }
 
             // Important to wipe out the field mapped to their password, and save the submission. We don't want to permanently
