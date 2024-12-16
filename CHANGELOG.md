@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.36 - 2024-12-17
+
+### Added
+- Add more comprehensive logging for user element integration.
+- Provide Freeform 4 and Freeform 5 migrations.
+
+### Changed
+- Update Freeform migration to support Freeform 5+.
+
+### Fixed
+- Fix not restoring trashed stencils when applying from project config.
+- Fix form export not exporting number values correctly.
+
 ## 2.1.35 - 2024-12-03
 
 ### Fixed
