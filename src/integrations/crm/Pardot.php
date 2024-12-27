@@ -555,6 +555,23 @@ class Pardot extends Crm
         return $this->_client;
     }
 
+    public function populateContext(): void
+    {
+        parent::populateContext();
+
+        // Allow us to save the tracking cookie at the time of submission, so grab later
+        $trackingData = [];
+        $pattern = '/^visitor_id[0-9]+(-hash)?$/';
+
+        foreach ($_COOKIE as $key => $value) {
+            if (preg_match($pattern, $key)) {
+                $trackingData[$key] = $value;
+            }
+        }
+        
+        $this->context['pardot_tracking'] = $trackingData;
+    }
+
 
     // Protected Methods
     // =========================================================================
@@ -567,6 +584,10 @@ class Pardot extends Crm
 
         // Flatten array to dot-notation
         $payload = ArrayHelper::flatten($payload);
+
+        // Add in cookie tracking support, if available
+        $trackingData = $this->context['pardot_tracking'] ?? [];
+        $payload = array_merge($payload, $trackingData);
 
         // Fire a 'modifyPayload' event
         $event = new ModifyPayloadEvent([
