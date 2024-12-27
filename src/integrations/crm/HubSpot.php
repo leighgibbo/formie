@@ -536,6 +536,14 @@ class HubSpot extends Crm
         return parent::getFieldMappingValues($submission, $fieldMapping, $fieldSettings);
     }
 
+    public function populateContext(): void
+    {
+        parent::populateContext();
+
+        // Allow us to save the tracking cookie at the time of submission, so grab later
+        $this->context['hubspotutk'] = $_COOKIE['hubspotutk'] ?? null;
+    }
+
 
     // Private Methods
     // =========================================================================
