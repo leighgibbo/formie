@@ -2,6 +2,7 @@
 namespace verbb\formie\base;
 
 use verbb\formie\events\ModifyElementFieldsEvent;
+use verbb\formie\events\ModifyElementMatchEvent;
 use verbb\formie\events\ModifyFieldIntegrationValueEvent;
 use verbb\formie\fields\formfields\MultiLineText;
 use verbb\formie\fields\formfields\SingleLineText;
@@ -29,6 +30,7 @@ abstract class Element extends Integration
     // =========================================================================
 
     public const EVENT_MODIFY_ELEMENT_FIELDS = 'modifyElementFields';
+    public const EVENT_MODIFY_ELEMENT_MATCH = 'modifyElementMatch';
 
 
     // Static Methods
@@ -239,6 +241,23 @@ abstract class Element extends Integration
     }
 
     protected function getElementForPayload($elementType, $identifier, $submission, array $criteria = [])
+    {
+        $element = $this->defineElementForPayload($elementType, $identifier, $submission, $criteria);
+
+        // Fire a 'modifyElementMatch' event
+        $event = new ModifyElementMatchEvent([
+            'elementType' => $elementType,
+            'identifier' => $identifier,
+            'submission' => $submission,
+            'criteria' => $criteria,
+            'element' => $element,
+        ]);
+        $this->trigger(self::EVENT_MODIFY_ELEMENT_MATCH, $event);
+
+        return $event->element;
+    }
+
+    protected function defineElementForPayload($elementType, $identifier, $submission, array $criteria = [])
     {
         $element = new $elementType();
 
