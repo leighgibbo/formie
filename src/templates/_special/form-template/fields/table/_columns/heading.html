@@ -1,0 +1,6 @@
+{{ tag('input', {
+    type: 'hidden',
+    name: field.getHtmlName("#{index}[#{colId}]"),
+    value: row[colId] ?? '',
+}) }}
+{{ row[colId] ?? '' }}

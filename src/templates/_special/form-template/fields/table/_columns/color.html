@@ -1,0 +1,7 @@
+{{ tag('input', {
+    id: rowId,
+    type: 'color',
+    class: 'fui-input',
+    value: row[colId] ?? '',
+    name: field.getHtmlName("#{index}[#{colId}]"),
+}) }}
