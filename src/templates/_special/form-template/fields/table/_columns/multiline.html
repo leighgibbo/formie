@@ -1,6 +1,5 @@
-{{ tag('textarea', {
+{{ fieldtag('tableMultilineInput', {
     id: rowId,
-    class: 'fui-input',
-    name: field.getHtmlName("#{index}[#{colId}]"),
     text: row[colId] ?? '',
+    name: field.getHtmlName("#{index}[#{colId}]"),
 }) }}

@@ -1,5 +1,4 @@
-{% tag 'select' with {
-    class: 'fui-select',
+{% fieldtag 'tableSelectInput' with {
     name: field.getHtmlName("#{index}[#{colId}]"),
 } %}
     {% for option in col.options %}
@@ -7,4 +6,4 @@
             {{ option.label | t('formie') }}
         </option>
     {% endfor %}
-{% endtag %}
+{% endfieldtag %}

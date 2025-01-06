@@ -1,7 +1,5 @@
-{{ tag('input', {
+{{ fieldtag('tableNumberInput', {
     id: rowId,
-    type: 'number',
-    class: 'fui-input',
     value: row[colId] ?? '',
     name: field.getHtmlName("#{index}[#{colId}]"),
 }) }}

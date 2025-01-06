@@ -1,6 +1,6 @@
-{{ tag('input', {
-    type: 'hidden',
-    name: field.getHtmlName("#{index}[#{colId}]"),
+{{ fieldtag('tableHeadingInput', {
     value: row[colId] ?? '',
+    name: field.getHtmlName("#{index}[#{colId}]"),
 }) }}
+
 {{ row[colId] ?? '' }}

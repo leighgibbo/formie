@@ -1,10 +1,8 @@
 {{ hiddenInput(field.getHtmlName("#{index}[#{colId}]"), '') }}
 
 <div class="fui-checkbox">
-    {{ tag('input', {
+    {{ fieldtag('tableCheckboxInput', {
         id: rowId,
-        type: 'checkbox',
-        class: 'fui-input fui-checkbox-input',
         value: '1',
         checked: (row[colId] ?? false) ? true : false,
         name: field.getHtmlName("#{index}[#{colId}]"),
