@@ -28,6 +28,7 @@ use craft\db\Migration;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\Json;
+use craft\validators\HandleValidator;
 
 use DateTime;
 use DateTimeZone;
@@ -762,6 +763,25 @@ class MigrateFreeform5 extends Migration
 
             if ($showLog) {
                 $this->stdout("    > Handle “{$currentHandle}” contains an invalid character, will use “{$newHandle}” instead.", Console::FG_YELLOW);
+            }
+        }
+
+        // If the handle is longer than 64 characters cut the remainder off
+        if (strlen($newHandle) > 64) {
+            $currentHandle = $newHandle;
+            $newHandle = substr($newHandle, 0, 64);
+
+            if ($showLog) {
+                $this->stdout("    > Handle “{$currentHandle}” is longer than the allowed 64 characters, will use “{$newHandle}” instead.", Console::FG_YELLOW);
+            }
+        }
+
+        // Validate the handle on it's correctness
+        if (!preg_match('/^' . HandleValidator::$handlePattern . '$/', $newHandle)) {
+            $newHandle = 'field_' . StringHelper::randomString(10);
+
+            if ($showLog) {
+                $this->stdout("    > Handle “{$currentHandle}” is invalid, will use the generated “{$newHandle}” instead.", Console::FG_YELLOW);
             }
         }
 
