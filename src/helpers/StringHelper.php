@@ -54,7 +54,11 @@ class StringHelper extends CraftStringHelper
 
     public static function encodeHtml(string $str): string
     {
-        return LitEmoji::encodeHtml($str);
+        // We can't use `LitEmoji::encodeHtml()` as we need to replace `LitEmoji::unicodeToShortcode()` 
+        // with `self::emojiToShortcodes()` to handle some legitimate characters like `’` (U+2019).
+        $str = self::emojiToShortcodes($str);
+
+        return LitEmoji::shortcodeToEntities($str);
     }
 
     public static function cleanString(string $str): string
