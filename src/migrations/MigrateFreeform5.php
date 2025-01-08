@@ -2,6 +2,7 @@
 namespace verbb\formie\migrations;
 
 use verbb\formie\Formie;
+use verbb\formie\base\Field as FormieField;
 use verbb\formie\base\FormFieldInterface as FormieFieldInterface;
 use verbb\formie\elements\Form as FormieForm;
 use verbb\formie\elements\Submission;
@@ -30,6 +31,8 @@ use craft\helpers\Json;
 
 use DateTime;
 use DateTimeZone;
+use ReflectionClass;
+use ReflectionProperty;
 use Throwable;
 
 use yii\base\InvalidConfigException;
@@ -105,7 +108,7 @@ class MigrateFreeform5 extends Migration
 
         try {
             $form = new FormieForm();
-            $form->title = $freeformForm->name;
+            $form->title = $freeformForm->getName();
             $form->handle = $this->_getHandle($freeformForm);
             $form->settings->submissionTitleFormat = $freeformForm->submissionTitle != '{{ dateCreated|date("Y-m-d H:i:s") }}' ? $freeformForm->submissionTitle : '';
             $form->settings->submitMethod = $freeformForm->isAjaxEnabled() ? 'ajax' : 'page-reload';
@@ -207,8 +210,6 @@ class MigrateFreeform5 extends Migration
             foreach ($entry->getFieldCollection() as $field) {
                 // Parse the handle for a few things just in case
                 $handle = $this->_getFieldHandle($field->getHandle(), false);
-
-                $field = $entry->$handle;
 
                 try {
                     switch (get_class($field)) {
@@ -400,8 +401,8 @@ class MigrateFreeform5 extends Migration
 
     private function _buildFieldLayout(FreeformForm $form): FieldLayout
     {
-        $fieldLayout = new FieldLayout(['type' => Form::class]);
-        $fieldLayout->type = Form::class;
+        $fieldLayout = new FieldLayout(['type' => FormieForm::class]);
+        $fieldLayout->type = FormieForm::class;
 
         $pages = [];
         $fields = [];
@@ -585,7 +586,7 @@ class MigrateFreeform5 extends Migration
                 $this->_applyFieldDefaults($newField);
 
                 $newField->label = $field->getLabel();
-                $newField->handle = $field->getHash();
+                $newField->handle = $field->getHandle();
                 $newField->htmlContent = $field->getValue();
                 $newField->labelPosition = HiddenPosition::class;
                 break;
