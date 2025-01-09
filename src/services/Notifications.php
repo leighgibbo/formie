@@ -143,9 +143,17 @@ class Notifications extends Component
             $notificationRecord->enableConditions = $notification->enableConditions;
             $notificationRecord->conditions = $notification->conditions;
 
+            // Clear content for conditionally-set recipients to prevent zombie data
+            if ($notificationRecord->recipients === 'conditions') {
+                $notificationRecord->to = null;
+            } else {
+                $notificationRecord->toConditions = null;
+            }
+
             $notificationRecord->save(false);
 
             $notification->id = $notificationRecord->id;
+            $notification->to = $notificationRecord->to;
 
             $transaction->commit();
         } catch (Throwable $e) {
