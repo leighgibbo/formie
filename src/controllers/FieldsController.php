@@ -104,7 +104,9 @@ class FieldsController extends Controller
 
         // Use UID to prevent easy-guessing of submission to scrape data
         if ($submissionUid && $fieldId) {
-            $submission = Submission::find()->uid($submissionUid)->one();
+            // Don't use a Submission element query, just in case there's a mixup with element/submission UIDs
+            // See https://github.com/verbb/formie/issues/2221
+            $submission = Craft::$app->getElements()->getElementByUid($submissionUid);
 
             if ($submission && $form = $submission->getForm()) {
                 $signatureValue = null;
