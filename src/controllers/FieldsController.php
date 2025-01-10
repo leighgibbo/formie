@@ -110,13 +110,13 @@ class FieldsController extends Controller
                 $signatureValue = null;
 
                 foreach ($form->getCustomFields() as $field) {
-                    if ($field->id === $fieldId) {
+                    if ((int)$field->id === $fieldId) {
                         $signatureValue = $submission->getFieldValue($field->handle);
                     }
 
                     if ($field instanceof NestedFieldInterface) {
                         foreach ($field->getCustomFields() as $nestedField) {
-                            if ($nestedField->id === $fieldId) {
+                            if ((int)$nestedField->id === $fieldId) {
                                 $row = $submission->getFieldValue($field->handle)->one();
 
                                 if ($row) {
