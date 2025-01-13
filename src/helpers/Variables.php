@@ -5,6 +5,7 @@ use verbb\formie\Formie;
 use verbb\formie\base\SubFieldInterface;
 use verbb\formie\elements\Form;
 use verbb\formie\elements\Submission;
+use verbb\formie\events\ParseVariablesEvent;
 use verbb\formie\events\RegisterVariablesEvent;
 use verbb\formie\fields\formfields;
 use verbb\formie\models\Notification;
@@ -33,6 +34,7 @@ class Variables
     // =========================================================================
 
     public const EVENT_REGISTER_VARIABLES = 'registerVariables';
+    public const EVENT_PARSE_VARIABLES = 'parseVariables';
 
 
     // Static Methods
@@ -230,7 +232,7 @@ class Variables
             // Form Info
             $formName = $form->title ?? '';
 
-            Formie::$plugin->getRenderCache()->setGlobalVariables($cacheKey, [
+            $variables = [
                 'formName' => $formName,
                 'submissionUrl' => $submission->cpEditUrl ?? '',
                 'submissionId' => $submission->id ?? null,
@@ -259,14 +261,15 @@ class Variables
                 'userFullName' => $userFullName,
                 'userFirstName' => $userFirstName,
                 'userLastName' => $userLastName,
-            ]);
+            ];
 
             // Add support for all global sets
             foreach (Craft::$app->getGlobals()->getAllSets() as $globalSet) {
-                Formie::$plugin->getRenderCache()->setGlobalVariables($cacheKey, [
-                    $globalSet->handle => $globalSet,
-                ]);
+                $variables[$globalSet->handle] = $globalSet;
             }
+
+            // Cache variables in-memory for better performance next parse
+            Formie::$plugin->getRenderCache()->setGlobalVariables($cacheKey, $variables);
         }
 
         $fieldVariables = [];
@@ -299,9 +302,19 @@ class Variables
             }
         }
 
+        // Allow plugins to modify the variables
+        $event = new ParseVariablesEvent([
+            'submission' => $submission,
+            'form' => $form,
+            'notification' => $notification,
+            'value' => $value,
+            'variables' => $variables,
+        ]);
+        Event::trigger(self::class, self::EVENT_PARSE_VARIABLES, $event);
+
         // Try to parse submission + extra variables
         try {
-            return Formie::$plugin->getTemplates()->renderObjectTemplate($value, $submission, $variables);
+            return Formie::$plugin->getTemplates()->renderObjectTemplate($value, $submission, $event->variables);
         } catch (Throwable $e) {
             Formie::error(Craft::t('formie', 'Failed to render dynamic string “{value}”. Template error: “{message}” {file}:{line}', [
                 'value' => $originalValue,
