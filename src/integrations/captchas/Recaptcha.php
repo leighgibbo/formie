@@ -218,7 +218,7 @@ class Recaptcha extends Captcha
                     $this->spamReason = 'Score ' . $score . ' is below threshold ' . $this->minScore . '.';
                 }
 
-                return true;
+                return $scoreRating;
             }
 
             return $isValid;
