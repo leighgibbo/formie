@@ -26,7 +26,7 @@ class Sendinblue extends EmailMarketing
      */
     public static function displayName(): string
     {
-        return Craft::t('formie', 'Sendinblue');
+        return Craft::t('formie', 'Sendinblue (Legacy)');
     }
 
     // Properties
@@ -38,9 +38,14 @@ class Sendinblue extends EmailMarketing
     // Public Methods
     // =========================================================================
 
+    public function getClassHandle()
+    {
+        return 'sendinblue';
+    }
+
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Sendinblue lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -89,6 +94,8 @@ class Sendinblue extends EmailMarketing
 
     public function sendPayload(Submission $submission): bool
     {
+        Craft::$app->getDeprecator()->log(__METHOD__, 'The Sendinblue integration has been deprecated. Use the Brevo integration instead.');
+
         try {
             $fieldValues = $this->getFieldMappingValues($submission, $this->fieldMapping);
 
@@ -225,6 +232,7 @@ class Sendinblue extends EmailMarketing
                 'handle' => $field['name'],
                 'name' => $field['name'],
                 'type' => $this->_convertFieldType($type),
+                'sourceType' => $type,
                 'options' => $options,
             ]);
         }

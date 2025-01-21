@@ -81,6 +81,11 @@ class Notifications extends Component
         return $this->_notifications()->firstWhere('id', $id);
     }
 
+    public function getFormNotificationByHandle(Form $form, string $handle): ?Notification
+    {
+        return ArrayHelper::whereMultiple($this->_notifications(), ['formId' => $form->id, 'handle' => $handle])[0] ?? null;
+    }
+
     /**
      * Saves a notification.
      *
@@ -115,6 +120,10 @@ class Notifications extends Component
             $notificationRecord->templateId = $notification->templateId;
             $notificationRecord->pdfTemplateId = $notification->pdfTemplateId;
             $notificationRecord->name = $notification->name;
+
+            // TODO: make this a setting in the form builder
+            $notificationRecord->handle = $this->_getUniqueNotificationHandle($notification);
+
             $notificationRecord->enabled = $notification->enabled;
             $notificationRecord->subject = $notification->subject;
             $notificationRecord->recipients = $notification->recipients;
@@ -134,9 +143,17 @@ class Notifications extends Component
             $notificationRecord->enableConditions = $notification->enableConditions;
             $notificationRecord->conditions = $notification->conditions;
 
+            // Clear content for conditionally-set recipients to prevent zombie data
+            if ($notificationRecord->recipients === 'conditions') {
+                $notificationRecord->to = null;
+            } else {
+                $notificationRecord->toConditions = null;
+            }
+
             $notificationRecord->save(false);
 
             $notification->id = $notificationRecord->id;
+            $notification->to = $notificationRecord->to;
 
             $transaction->commit();
         } catch (Throwable $e) {
@@ -462,6 +479,7 @@ class Notifications extends Component
             $definedTabs[] = 'Templates';
         }
 
+        $definedTabs[] = 'Settings';
         $definedTabs[] = 'Preview';
         $definedTabs[] = 'Conditions';
 
@@ -529,7 +547,7 @@ class Notifications extends Component
             ]),
             SchemaHelper::selectField([
                 'label' => Craft::t('formie', 'Recipients'),
-                'help' => Craft::t('formie', 'Define who should receive this email notification.'),
+                'help' => Craft::t('formie', 'Define who should receive this email notification. Define either specific emails, or emails based on conditions.'),
                 'name' => 'recipients',
                 'validation' => 'required',
                 'required' => true,
@@ -550,7 +568,7 @@ class Notifications extends Component
             [
                 '$formkit' => 'notificationRecipients',
                 'label' => Craft::t('formie', 'Recipient Conditions'),
-                'help' => Craft::t('formie', 'Add conditional logic to determine which email addresses receive this email notification.'),
+                'help' => Craft::t('formie', 'Use conditional logic to determine which email addresses receive this email notification.'),
                 'name' => 'toConditions',
                 'id' => 'toConditions',
                 'if' => '$get(recipients).value == conditions',
@@ -590,10 +608,17 @@ class Notifications extends Component
             ]),
             SchemaHelper::variableTextField([
                 'label' => Craft::t('formie', 'From Email'),
-                'help' => Craft::t('formie', 'The email address the notification email will be sent from. Leave empty to use the default email address'),
+                'help' => Craft::t('formie', 'The email address the notification email will be sent from. Leave empty to use the default email address for your site.'),
                 'name' => 'from',
                 'validation' => '?emailOrVariable',
                 'variables' => 'emailVariables',
+                'info' => Craft::t('formie', 'If not correctly configured, setting the "From" setting can lead to deliverability issues. Read [our guide](https://verbb.io/craft-plugins/formie/user-guides/how-to-keep-email-notifications-out-of-your-junk-emails) for tips.'),
+            ]),
+            SchemaHelper::variableTextField([
+                'label' => Craft::t('formie', 'Reply-To Name'),
+                'help' => Craft::t('formie', 'The name to be used as the reply to for the notification email.'),
+                'name' => 'replyToName',
+                'variables' => 'plainTextVariables',
             ]),
             SchemaHelper::variableTextField([
                 'label' => Craft::t('formie', 'Reply-To Email'),
@@ -601,6 +626,7 @@ class Notifications extends Component
                 'name' => 'replyTo',
                 'validation' => '?emailOrVariable',
                 'variables' => 'emailVariables',
+                'info' => Craft::t('formie', 'Do not use the same email for "From" and "Reply-To". Read [our guide](https://verbb.io/craft-plugins/formie/user-guides/how-to-keep-email-notifications-out-of-your-junk-emails) for tips.'),
             ]),
             SchemaHelper::variableTextField([
                 'label' => Craft::t('formie', 'CC'),
@@ -679,6 +705,17 @@ class Notifications extends Component
                 'options' => $pdfTemplates,
                 'if' => '$get(attachPdf).value',
             ]),
+        ];
+    }
+
+    public function defineSettingsSchema(): array
+    {
+        return [
+            // TODO: add this at the next breakpoint
+            // SchemaHelper::handleField([
+            //     'help' => Craft::t('formie', 'How you’ll refer to this notification in your templates. Use the refresh icon to re-generate this from your notification name.'),
+            //     'warning' => '',
+            // ]),
         ];
     }
 
@@ -764,6 +801,7 @@ class Notifications extends Component
                 'templateId',
                 'pdfTemplateId',
                 'name',
+                'handle',
                 'enabled',
                 'subject',
                 'recipients',
@@ -803,5 +841,29 @@ class Notifications extends Component
         }
 
         return new NotificationRecord();
+    }
+
+    private function _getUniqueNotificationHandle(Notification $notification): string
+    {
+        $increment = 1;
+        $notificationHandle = StringHelper::toHandle($notification->name);
+        $handle = $notificationHandle;
+
+        // Generate a unique notification handle. Note that they're not unique globally, just per-form.
+        while (true) {
+            $existingNotification = (new Query())
+                ->select(['*'])
+                ->from(['{{%formie_notifications}}'])
+                ->where(['handle' => $handle, 'formId' => $notification->formId])
+                ->one();
+
+            if (!$existingNotification) {
+                return substr($handle, 0, 50);
+            }
+
+            $handle = $notificationHandle . $increment;
+
+            $increment++;
+        }
     }
 }

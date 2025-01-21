@@ -218,7 +218,9 @@ class Trello extends Miscellaneous
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::error($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $info = $this->getOauthProviderConfig();
@@ -246,7 +248,7 @@ class Trello extends Miscellaneous
 
     private function _renderMessage($submission): array|string
     {
-        $html = RichTextHelper::getHtmlContent($this->cardDescription, $submission);
+        $html = RichTextHelper::getHtmlContent($this->cardDescription, $submission, false);
 
         $converter = new HtmlConverter(['strip_tags' => true]);
         $markdown = $converter->convert($html);

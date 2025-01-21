@@ -19,8 +19,10 @@ use verbb\formie\models\FieldLayoutPage;
 use verbb\formie\models\Settings;
 use verbb\formie\models\Status;
 use verbb\formie\records\Submission as SubmissionRecord;
+use verbb\formie\web\assets\cp\CpAsset;
 
 use Craft;
+use craft\base\Component;
 use craft\base\Element;
 use craft\base\FieldInterface;
 use craft\elements\User;
@@ -44,6 +46,7 @@ use yii\validators\NumberValidator;
 use yii\validators\RequiredValidator;
 use yii\validators\Validator;
 
+use ReflectionClass;
 use Throwable;
 
 use Twig\Markup;
@@ -437,7 +440,8 @@ class Submission extends Element
             }
         }
 
-        if ($this->isIncomplete && $form && $form->settings->limitSubmissions) {
+        // Check whether the submission is either incomplete or "new" (the latter important for GQL)
+        if (($this->isIncomplete || !$this->id) && $form && $form->settings->limitSubmissions) {
             if (!$form->isWithinSubmissionsLimit()) {
                 $this->addError('form', Craft::t('formie', 'This form has met the number of allowed submissions.'));
             }
@@ -615,6 +619,14 @@ class Submission extends Element
         }
     }
 
+    public function getSidebarHtml(bool $static): string
+    {
+        // For when viewing a submission in a Submissions element select field
+        Craft::$app->getView()->registerAssetBundle(CpAsset::class);
+
+        return parent::getSidebarHtml($static);
+    }
+
     /**
      * Returns a field by its handle.
      *
@@ -655,8 +667,14 @@ class Submission extends Element
     /**
      * Sets the submission's status.
      */
-    public function setStatus(Status $status): void
+    public function setStatus(Status|string $status): void
     {
+        if (is_string($status)) {
+            if ($foundStatus = Formie::$plugin->getStatuses()->getStatusByHandle($status)) {
+                $status = $foundStatus;
+            }
+        }
+        
         $this->_status = $status;
         $this->statusId = $status->id;
     }
@@ -789,6 +807,25 @@ class Submission extends Element
                 }
             }
         }
+    }
+
+    public function setFieldValueFromRequest(string $fieldHandle, mixed $value): void
+    {
+        /* @var Settings $settings */
+        $settings = Formie::$plugin->getSettings();
+
+        // Check if we only want to set the fields for the current page. This helps with large
+        // forms with lots of Repeater/Group fields not on the current page being saved.
+        if ($settings->setOnlyCurrentPagePayload) {
+            $currentPageFields = $this->getForm()->getCurrentPage()->getCustomFields();
+            $currentPageFieldHandles = ArrayHelper::getColumn($currentPageFields, 'handle');
+
+            if (!in_array($fieldHandle, $currentPageFieldHandles)) {
+                return;
+            }
+        }
+
+        parent::setFieldValueFromRequest($fieldHandle, $value);
     }
 
     /**
@@ -1039,6 +1076,18 @@ class Submission extends Element
                     // Store them now while we still have access to them, to delete in `afterDelete()`
                     $this->_assetsToDelete = array_merge($this->_assetsToDelete, $this->getFieldValue($field->handle)->all());
                 }
+
+                if ($field instanceof NestedFieldInterface) {
+                    $blocks = $this->getFieldValue($field->handle)->all();
+
+                    foreach ($blocks as $block) {
+                        foreach ($field->getCustomFields() as $nestedField) {
+                            if ($nestedField instanceof FileUpload) {
+                                $this->_assetsToDelete = array_merge($this->_assetsToDelete, $block->getFieldValue($nestedField->handle)->all());
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1062,6 +1111,63 @@ class Submission extends Element
         }
 
         parent::beforeDelete();
+    }
+
+    public function afterValidate(): void
+    {
+        // Lift from `craft\base\Element::afterValidate()` all so we can modify the `RequiredValidator`
+        // message for our custom error message. Might ask the Craft crew if there's a better way...
+        if (
+            static::hasContent() &&
+            Craft::$app->getIsInstalled() &&
+            $fieldLayout = $this->getFieldLayout()
+        ) {
+            $scenario = $this->getScenario();
+            $layoutElements = $fieldLayout->getVisibleCustomFieldElements($this);
+
+            foreach ($layoutElements as $layoutElement) {
+                $field = $layoutElement->getField();
+                $attribute = "field:$field->handle";
+
+                if (isset($this->_attributeNames) && !isset($this->_attributeNames[$attribute])) {
+                    continue;
+                }
+
+                $isEmpty = fn() => $field->isValueEmpty($this->getFieldValue($field->handle), $this);
+
+                // Add the required validator but with our custom message
+                if ($scenario === self::SCENARIO_LIVE && $layoutElement->required) {
+                    (new RequiredValidator(['isEmpty' => $isEmpty, 'message' => $field->errorMessage]))
+                        ->validateAttribute($this, $attribute);
+                }
+
+                foreach ($field->getElementValidationRules() as $rule) {
+                    $validator = $this->_callPrivateMethod('_normalizeFieldValidator', $attribute, $rule, $field, $isEmpty);
+                    if (
+                        in_array($scenario, $validator->on) ||
+                        (empty($validator->on) && !in_array($scenario, $validator->except))
+                    ) {
+                        $validator->validateAttributes($this);
+                    }
+                }
+
+                if ($field::hasContentColumn()) {
+                    $columnType = $field->getContentColumnType();
+                    $value = $field->serializeValue($this->getFieldValue($field->handle), $this);
+
+                    if (is_array($columnType)) {
+                        foreach ($columnType as $key => $type) {
+                            $this->_callPrivateMethod('_validateCustomFieldContentSizeInternal', $attribute, $field, $type, $value[$key] ?? null);
+                        }
+                    } else {
+                        $this->_callPrivateMethod('_validateCustomFieldContentSizeInternal', $attribute, $field, $columnType, $value);
+                    }
+                }
+            }
+        }
+
+        // Bubble up past the `Element::afterValidate()` to prevent this happening twice
+        Component::afterValidate();
     }
 
 
@@ -1099,6 +1205,13 @@ class Submission extends Element
         return $event->rules;
     }
 
+    public function getHtmlAttributes(string $context): array
+    {
+        $attributes = parent::getHtmlAttributes($context);
+        $attributes['data-date-created'] = $this->dateCreated->format('Y-m-d\TH:i:s.u\Z');
+
+        return $attributes;
+    }
 
     /**
      * @inheritDoc
@@ -1141,5 +1254,21 @@ class Submission extends Element
             default:
                 return parent::tableAttributeHtml($attribute);
         }
+    }
+
+
+    // Private methods
+    // =========================================================================
+
+    private function _callPrivateMethod(string $methodName): mixed
+    {
+        // Required to be able to call private methods in this class for `afterValidate()`.
+        $object = $this;
+        $reflectionClass = new ReflectionClass($object);
+        $reflectionMethod = $reflectionClass->getMethod($methodName);
+        $reflectionMethod->setAccessible(true);
+
+        $params = array_slice(func_get_args(), 1);
+        return $reflectionMethod->invokeArgs($object, $params);
     }
 }

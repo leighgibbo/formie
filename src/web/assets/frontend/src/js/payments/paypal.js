@@ -51,6 +51,9 @@ export class FormiePayPal extends FormiePaymentProvider {
         // Field is hidden, so reset everything
         this.onAfterSubmit();
 
+        // Remove the button so it's not rendered multiple times
+        this.$input.innerHTML = '';
+
         // Remove unique event listeners
         this.form.removeEventListener(eventKey('onAfterFormieSubmit', 'paypal'));
     }
@@ -61,6 +64,17 @@ export class FormiePayPal extends FormiePaymentProvider {
 
         params.push(`currency=${this.currency}`);
         params.push(`client-id=${this.clientId}`);
+
+        // Emit an "modifyQueryParams" event. This can directly modify the `params` param
+        const modifyQueryParamsEvent = new CustomEvent('modifyQueryParams', {
+            bubbles: true,
+            detail: {
+                payPal: this,
+                params,
+            },
+        });
+
+        this.$field.dispatchEvent(modifyQueryParamsEvent);
 
         return `${url}?${params.join('&')}`;
     }
@@ -111,7 +125,7 @@ export class FormiePayPal extends FormiePaymentProvider {
     }
 
     renderButton() {
-        paypal.Buttons({
+        const options = {
             env: this.useSandbox ? 'sandbox' : 'production',
             style: this.getStyleSettings(),
             createOrder: (data, actions) => {
@@ -158,19 +172,48 @@ export class FormiePayPal extends FormiePaymentProvider {
                         this.updateInputs('paypalOrderId', data.orderID);
                         this.updateInputs('paypalAuthId', authorizationID);
 
+                        // Emit an event when approved
+                        const onApproveEvent = new CustomEvent('onApprove', {
+                            bubbles: true,
+                            detail: {
+                                payPal: this,
+                                data,
+                                actions,
+                                authorization,
+                            },
+                        });
+
+                        // Allow events to bail before showing a message (commonly to auto-submit)
+                        if (!this.$field.dispatchEvent(onApproveEvent)) {
+                            return;
+                        }
+
                         if (!authorizationID) {
-                            this.addError('Missing Authorization ID for approval.');
+                            this.addError(t('Missing Authorization ID for approval.'));
                         } else {
-                            this.addSuccess(t('Payment authorized. Finalise the form to complete payment.'));
+                            this.addSuccess(t('Payment authorized. Finalize the form to complete payment.'));
                         }
                     } catch (error) {
                         console.error(error);
 
-                        this.addError('Unable to authorize payment. Please try again.');
+                        this.addError(t('Unable to authorize payment. Please try again.'));
                     }
                 });
             },
-        }).render(this.$input);
+        };
+
+        // Emit an "beforeInit" event. This can directly modify the `options` param
+        const beforeInitEvent = new CustomEvent('beforeInit', {
+            bubbles: true,
+            detail: {
+                payPal: this,
+                options,
+            },
+        });
+
+        this.$field.dispatchEvent(beforeInitEvent);
+
+        paypal.Buttons(options).render(this.$input);
     }
 
     onAfterSubmit(e) {

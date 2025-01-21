@@ -32,6 +32,7 @@ use craft\web\Response;
 use yii\base\Event;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 
 use Throwable;
 use Exception;
@@ -103,7 +104,7 @@ class Opayo extends Payment
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Provide payment capabilities for your forms with Opayo.');
+        return Craft::t('formie', 'Provide payment capabilities for your forms with {name}.', ['name' => static::displayName()]);
     }
 
     /**
@@ -112,6 +113,15 @@ class Opayo extends Payment
     public function hasValidSettings(): bool
     {
         return App::parseEnv($this->vendorName) && App::parseEnv($this->integrationKey) && App::parseEnv($this->integrationPassword);
+    }
+
+    public function getReturnUrl(): string
+    {
+        if (Craft::$app->getConfig()->getGeneral()->headlessMode) {
+            return UrlHelper::actionUrl('formie/payment-webhooks/process-callback', ['handle' => $this->handle]);
+        }
+
+        return UrlHelper::siteUrl('formie/payment-webhooks/process-callback', ['handle' => $this->handle]);
     }
 
     /**
@@ -152,7 +162,7 @@ class Opayo extends Payment
         ];
 
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/payments/opayo.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/payments/opayo.js'),
             'module' => 'FormieOpayo',
             'settings' => $settings,
         ];
@@ -207,7 +217,7 @@ class Opayo extends Payment
         // Capture the authorized payment
         try {
             $field = $this->getField();
-            $fieldValue = $submission->getFieldValue($field->handle);
+            $fieldValue = $this->getPaymentFieldValue($submission);
             $opayoTokenId = $fieldValue['opayoTokenId'] ?? null;
             $opayoSessionKey = $fieldValue['opayoSessionKey'] ?? null;
             $opayo3DSComplete = $fieldValue['opayo3DSComplete'] ?? null;
@@ -272,7 +282,6 @@ class Opayo extends Payment
 
                 Formie::$plugin->getPayments()->savePayment($payment);
 
-                $returnUrl = UrlHelper::siteUrl('formie/payment-webhooks/process-callback', ['handle' => $this->handle]);
                 $threeDSSessionData = [
                     'submissionId' => $submission->id,
                     'fieldId' => $field->id,
@@ -287,13 +296,13 @@ class Opayo extends Payment
                     'data' => [
                         'acsUrl' => $acsUrl,
                         'creq' => $response['cReq'] ?? '',
-                        'returnUrl' => $returnUrl,
+                        'returnUrl' => $this->getReturnUrl(),
                         'threeDSSessionData' => base64_encode(Json::encode($threeDSSessionData)),
                     ],
                 ]);
 
                 // Add an error to the form to ensure it doesn't proceed, and the 3DS popup is shown
-                $submission->addError($field->handle, Craft::t('formie', 'This payment requires 3D Secure authentication. Please follow the instructions on-screen to continue.'));
+                $this->addFieldError($submission, Craft::t('formie', 'This payment requires 3D Secure authentication. Please follow the instructions on-screen to continue.'));
 
                 return false;
             }
@@ -326,7 +335,7 @@ class Opayo extends Payment
 
             Integration::apiError($this, $e, $this->throwApiError);
 
-            $submission->addError($field->handle, Craft::t('formie', $e->getMessage()));
+            $this->addFieldError($submission, Craft::t('formie', $e->getMessage()));
             
             $payment = new PaymentModel();
             $payment->integrationId = $this->id;
@@ -381,6 +390,7 @@ class Opayo extends Payment
             return $callbackResponse;
         }
         
+        $response = [];
         $responseData = [];
 
         $cres = $request->getParam('cres');
@@ -441,21 +451,64 @@ class Opayo extends Payment
                 'response' => Json::encode($response),
             ]));
 
-            Integration::apiError($this, $e, $this->throwApiError);
-            
-            $payment = new PaymentModel();
-            $payment->integrationId = $this->id;
-            $payment->submissionId = $submissionId;
-            $payment->fieldId = $fieldId;
-            $payment->amount = self::fromOpayoAmount($amount, $currency);
-            $payment->currency = $currency;
-            $payment->status = PaymentModel::STATUS_FAILED;
-            $payment->reference = $transactionId;
-            $payment->response = ['message' => $e->getMessage()];
+            $shouldShowError = true;
 
-            Formie::$plugin->getPayments()->savePayment($payment);
+            // There's a scenario we need to ignore with Opayo, where we get the response `{"description":"Operation not allowed for this transaction","code":1017}`
+            // but the transaction has actually gone through successfully.
+            if ($e instanceof RequestException && $e->getResponse()) {
+                $rawResponse = $e->getResponse();
+                $messageText = (string)$rawResponse->getBody()->getContents();
+                $response = Json::decode($messageText);
+                $code = $response['code'] ?? null;
 
-            $responseData['error'] = $payment->response;
+                if ($code == '1017') {
+                    $shouldShowError = false;
+
+                    // Record the payment
+                    $payment = Formie::$plugin->getPayments()->getPaymentByReference($transactionId);
+
+                    if ($payment) {
+                        $payment->status = PaymentModel::STATUS_SUCCESS;
+                        $payment->reference = $transactionId;
+                        $payment->response = $response;
+
+                        Formie::$plugin->getPayments()->savePayment($payment);
+                    }
+
+                    $responseData['success'] = true;
+                    $responseData['transactionId'] = $transactionId;
+                }
+            }
+
+            if ($shouldShowError) {
+                Integration::apiError($this, $e, $this->throwApiError);
+
+                $error = ['message' => $e->getMessage()];
+
+                $payment = new PaymentModel();
+                $payment->response = $error;
+
+                // Try and update the existing pending payment to failed, and merge content
+                if ($transactionId) {
+                    if ($payment = Formie::$plugin->getPayments()->getPaymentByReference($transactionId)) {
+                        if (is_array($payment->response)) {
+                            $payment->response['message'] = $e->getMessage();
+                        }
+                    }
+                }
+                
+                $payment->integrationId = $this->id;
+                $payment->submissionId = $submissionId;
+                $payment->fieldId = $fieldId;
+                $payment->amount = self::fromOpayoAmount($amount, $currency);
+                $payment->currency = $currency;
+                $payment->status = PaymentModel::STATUS_FAILED;
+                $payment->reference = $transactionId;
+
+                Formie::$plugin->getPayments()->savePayment($payment);
+
+                $responseData['error'] = $error;
+            }
         }
 
         // Send back some JS to trigger the iframe to close, and the submission to submit
@@ -606,6 +659,7 @@ class Opayo extends Payment
                 [
                     'type' => SingleLineText::class,
                     'name' => Craft::t('formie', 'Cardholder Name'),
+                    'handle' => 'cardName',
                     'required' => true,
                     'inputAttributes' => [
                         [
@@ -616,6 +670,10 @@ class Opayo extends Payment
                             'label' => 'name',
                             'value' => false,
                         ],
+                        [
+                            'label' => 'autocomplete',
+                            'value' => 'cc-name',
+                        ],
                     ],
                 ],
             ],
@@ -623,6 +681,7 @@ class Opayo extends Payment
                 [
                     'type' => SingleLineText::class,
                     'name' => Craft::t('formie', 'Card Number'),
+                    'handle' => 'cardNumber',
                     'required' => true,
                     'placeholder' => '•••• •••• •••• ••••',
                     'inputAttributes' => [
@@ -634,11 +693,16 @@ class Opayo extends Payment
                             'label' => 'name',
                             'value' => false,
                         ],
+                        [
+                            'label' => 'autocomplete',
+                            'value' => 'cc-number',
+                        ],
                     ],
                 ],
                 [
                     'type' => SingleLineText::class,
                     'name' => Craft::t('formie', 'Expiry'),
+                    'handle' => 'cardExpiry',
                     'required' => true,
                     'placeholder' => 'MMYY',
                     'inputAttributes' => [
@@ -650,11 +714,16 @@ class Opayo extends Payment
                             'label' => 'name',
                             'value' => false,
                         ],
+                        [
+                            'label' => 'autocomplete',
+                            'value' => 'cc-exp',
+                        ],
                     ],
                 ],
                 [
                     'type' => SingleLineText::class,
                     'name' => Craft::t('formie', 'CVC'),
+                    'handle' => 'cardCvc',
                     'required' => true,
                     'placeholder' => '•••',
                     'inputAttributes' => [
@@ -665,6 +734,10 @@ class Opayo extends Payment
                         [
                             'label' => 'name',
                             'value' => false,
+                        ],
+                        [
+                            'label' => 'autocomplete',
+                            'value' => 'cc-csc',
                         ],
                     ],
                 ],
@@ -716,7 +789,7 @@ class Opayo extends Payment
 
         $billingName = $this->getFieldSetting('billingDetails.billingName');
         $billingAddress = $this->getFieldSetting('billingDetails.billingAddress');
-        $billingEmail = $this->getFieldSetting('billingDetails.billingEmail');
+        $payload['customerEMail'] = $this->getFieldSetting('billingDetails.billingEmail');
 
         if ($billingName) {
             $integrationField = new IntegrationField();
@@ -795,11 +868,9 @@ class Opayo extends Payment
 
     private function _getRequestDetail(): array
     {
-        $returnUrl = UrlHelper::siteUrl('formie/payment-webhooks/process-callback', ['handle' => $this->handle]);
-
-        $data = [
+        return [
             'website' => Craft::$app->getRequest()->getOrigin(),
-            'notificationURL' => $returnUrl,
+            'notificationURL' => $this->getReturnUrl(),
             'browserIP' => Craft::$app->getRequest()->getUserIP(),
             'browserAcceptHeader' => Craft::$app->getRequest()->getHeaders()->get('accept'),
             'browserJavascriptEnabled' => false,
@@ -816,7 +887,5 @@ class Opayo extends Payment
             'transType' => 'GoodsAndServicePurchase',
             'threeDSRequestorDecReqInd' => 'N',
         ];
-
-        return $data;
     }
 }

@@ -2,15 +2,14 @@
 When rendering a form, you might like to populate the values of a field with some default values.
 
 ```twig
-{# Sets the field with handle `text` to "Some Value" for the form with a handle `contactForm` #}
-{% do craft.formie.populateFormValues('contactForm', { text: 'Some Value' }) %}
-
-{# or use a `form` object #}
+{# Fetch the form with the handle `contactForm` #}
 {% set form = craft.formie.forms({ handle: 'contactForm' }).one() %}
+
+{# Sets the field with handle `text` to "Some Value" for the form #}
 {% do craft.formie.populateFormValues(form, { text: 'Some Value' }) %}
 
-{# Must be done before the `renderForm()` #}
-{{ craft.formie.renderForm('contactForm') }}
+{# Render the form after calling `populateFormValues()` #}
+{{ craft.formie.renderForm(form) }}
 ```
 
 :::tip
@@ -117,12 +116,32 @@ To populate a Repeater field, you'll also be creating the "blocks", as well as d
 
 The above will create two "blocks" for the repeater field.
 
+## Table
+To populate a Table field, you'll also be creating the "rows", as well as defining the inner column values. The inner column values should be the `handle` for the column as defined in your field settings.
+
+```twig
+{% do craft.formie.populateFormValues(form, {
+    tableFieldHandle: [
+        {
+            textColumnHandle: 'Some Value',
+            dropdownColumnHandle: 'Option 1',
+        },
+        {
+            textColumnHandle: 'Another Value',
+            dropdownColumnHandle: 'Option 2',
+        },
+    ],
+}) %}
+```
+
+The above will create two "blocks" for the repeater field.
+
 ## Forcing Values
-The way populating values work in Formie is by setting the default value for a field. This means that when you start a new submission, the values you set in `populateFormValues()` will be applied to the field, the same way a default value would.
+The method of populating field values in Formie is by setting the default value for a field. This means that when you start a new submission, the values you set in `populateFormValues()` will be applied to the field, the same way a default value would.
 
 However, there's one caveat with this approach, to do with incomplete submissions. If you were to try to populate an incomplete submission with field values, you'll find it won't work. This is because the submission technically already has a value - even if it's a blank value.
 
-You can even test this in effect for a multi-page form by submitting the first page of a form, **then** adding your `populateFormValues()` call to your templates, so see that it'll have no effect on any of the fields on any page. This is because Formie can't determine if the empty value a field might have is "correct" (the user intentionally left it blank), or whether to populate (override) the value.
+You can even test this in effect for a multi-page form by submitting the first page of a form, **then** adding your `populateFormValues()` call to your templates, to see that it'll have no effect on any of the fields on any page. This is because Formie can't determine if the empty value a field might have is "correct" (the user intentionally left it blank), or whether to populate (override) the value.
 
 But there are scenarios where you want certain field to **always** have a set value, even for incomplete submissions, or if for example a user is coming back to a submission at a later stage. You can use the `force` option for `populateFormValues()` to achieve this.
 

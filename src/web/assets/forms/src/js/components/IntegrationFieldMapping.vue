@@ -141,6 +141,13 @@ export default {
         if (!Object.keys(this.proxyValue).length) {
             this.resetValues();
         }
+
+        // Populate the empty values, so we don't get empty dropdowns
+        this.rows.forEach((row) => {
+            if (this.proxyValue[row.handle] === undefined) {
+                this.proxyValue[row.handle] = '';
+            }
+        });
     },
 
     methods: {

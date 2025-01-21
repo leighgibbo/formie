@@ -290,7 +290,7 @@ class Tags extends CraftTags implements FormFieldInterface
     public function getFrontEndJsModules(): ?array
     {
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/tags.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/tags.js'),
             'module' => 'FormieTags',
         ];
     }
@@ -339,15 +339,18 @@ class Tags extends CraftTags implements FormFieldInterface
             $query->group($group);
         }
 
+        // Ensure we call the getter to handle pre-populated values correctly
+        $defaultValue = $this->getDefaultValue();
+
         // Check if a default value has been set AND we're limiting. We need to resolve the value before limiting
-        if ($this->defaultValue && $this->limitOptions) {
+        if ($defaultValue && $this->limitOptions) {
             $ids = [];
 
             // Handle the two ways a default value can be set
-            if ($this->defaultValue instanceof ElementQueryInterface) {
-                $ids = $this->defaultValue->id;
+            if ($defaultValue instanceof ElementQueryInterface) {
+                $ids = $defaultValue->id;
             } else {
-                $ids = ArrayHelper::getColumn($this->defaultValue, 'id');
+                $ids = ArrayHelper::getColumn($defaultValue, 'id');
             }
 
             if ($ids) {
@@ -360,7 +363,7 @@ class Tags extends CraftTags implements FormFieldInterface
 
         // Allow any template-defined elementQuery to override
         if ($this->elementsQuery) {
-            Craft::configure($query, $this->elementsQuery);
+            $query = $this->elementsQuery;
         }
 
         // Fire a 'modifyElementFieldQuery' event
@@ -403,7 +406,11 @@ class Tags extends CraftTags implements FormFieldInterface
     public function getSettingGqlTypes(): array
     {
         return array_merge($this->traitGetSettingGqlTypes(), [
-           'defaultValue' => [
+            'displayType' => [
+                'name' => 'displayType',
+                'type' => Type::string(),
+            ],
+            'defaultValue' => [
                 'name' => 'defaultValue',
                 'type' => Type::string(),
                 'resolve' => function($field) {
@@ -492,6 +499,7 @@ class Tags extends CraftTags implements FormFieldInterface
                 'if' => '$get(required).value',
             ]),
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
             SchemaHelper::numberField([
                 'label' => Craft::t('formie', 'Limit'),
                 'help' => Craft::t('formie', 'Limit the number of selectable variants.'),

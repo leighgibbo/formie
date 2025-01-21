@@ -84,11 +84,11 @@ class Emails extends Component
         $fromName = $this->_getFilteredString($fromName);
 
         if ($fromEmail) {
-            $newEmail->setFrom($fromEmail);
-        }
-
-        if ($fromName && $fromEmail) {
-            $newEmail->setFrom([$fromEmail => $fromName]);
+            if ($fromName) {
+                $newEmail->setFrom([$fromEmail => $fromName]);
+            } else {
+                $newEmail->setFrom($fromEmail);
+            }
         }
 
         // To:
@@ -185,8 +185,14 @@ class Emails extends Component
                 $replyTo = Variables::getParsedValue((string)$notification->replyTo, $submission, $form, $notification);
                 $replyTo = $this->_getParsedEmails($replyTo);
 
+                $replyToName = Variables::getParsedValue((string)$notification->replyToName, $submission, $form, $notification);
+
                 if ($replyTo) {
-                    $newEmail->setReplyTo($replyTo);
+                    if ($replyToName) {
+                        $newEmail->setReplyTo([$replyTo[0] => $replyToName]);
+                    } else {
+                        $newEmail->setReplyTo($replyTo);
+                    }
                 }
             } catch (Throwable $e) {
                 $error = Craft::t('formie', 'Notification email parse error for ReplyTo: {value}”. Template error: “{message}” {file}:{line}', [
@@ -529,32 +535,42 @@ class Emails extends Component
             // Also check for control characters, which aren't included above
             $email = preg_replace('/[^\PC\s]/u', '', $email);
 
-            $emailsEnv[] = trim(App::parseEnv(trim($email)));
+            // Handle .env variables
+            $email = App::parseEnv(trim($email));
+
+            // Lowercase emails, just in case
+            $email = strtolower(trim($email));
+
+            $emailsEnv[] = $email;
         }
 
-        return array_filter($emailsEnv);
+        $emailsEnv = array_filter($emailsEnv);
+
+        return array_values($emailsEnv);
     }
 
     private function _getAssetsForSubmission($element): array
     {
         $assets = [];
 
-        foreach ($element->getFieldLayout()->getCustomFields() as $field) {
-            if (get_class($field) === FileUpload::class) {
-                $value = $element->getFieldValue($field->handle);
+        if ($fieldLayout = $element->getFieldLayout()) {
+            foreach ($fieldLayout->getCustomFields() as $field) {
+                if (get_class($field) === FileUpload::class) {
+                    $value = $element->getFieldValue($field->handle);
 
-                if ($value instanceof AssetQuery) {
-                    $assets[] = $value->all();
+                    if ($value instanceof AssetQuery) {
+                        $assets[] = $value->all();
+                    }
                 }
-            }
 
-            // Separate check for nested fields (repeater/group), fetch the element and try again
-            if ($field instanceof NestedFieldInterface) {
-                $query = $element->getFieldValue($field->handle);
+                // Separate check for nested fields (repeater/group), fetch the element and try again
+                if ($field instanceof NestedFieldInterface) {
+                    $query = $element->getFieldValue($field->handle);
 
-                if ($query) {
-                    foreach ($query->all() as $nestedElement) {
-                        $assets[] = $this->_getAssetsForSubmission($nestedElement);
+                    if ($query) {
+                        foreach ($query->all() as $nestedElement) {
+                            $assets[] = $this->_getAssetsForSubmission($nestedElement);
+                        }
                     }
                 }
             }
@@ -591,7 +607,10 @@ class Emails extends Component
             }
 
             if ($path) {
-                $message->attach($path, ['fileName' => $asset->filename]);
+                $message->attach($path, [
+                    'fileName' => $asset->filename,
+                    'contentType' => $asset->getMimeType(),
+                ]);
             }
         }
     }
@@ -644,7 +663,7 @@ class Emails extends Component
 
         // Generate the filename correctly.
         $filenameFormat = $template->filenameFormat ?? 'Submission-{submission.id}';
-        $fileName = Craft::$app->getView()->renderObjectTemplate($filenameFormat, $variables);
+        $fileName = Formie::$plugin->getTemplates()->renderObjectTemplate($filenameFormat, $variables);
 
         $message->attach($pdfPath, ['fileName' => $fileName . '.pdf', 'contentType' => 'application/pdf']);
 

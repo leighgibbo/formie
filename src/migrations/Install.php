@@ -52,10 +52,10 @@ class Install extends Migration
             }
         }
 
+        $this->dropProjectConfig();
         $this->dropForeignKeys();
         $this->removeTables();
         $this->removeContent();
-        $this->dropProjectConfig();
 
         return true;
     }
@@ -162,6 +162,26 @@ class Install extends Migration
             'uid' => $this->uid(),
         ]);
 
+        $this->archiveTableIfExists('{{%formie_newlayout}}');
+        $this->createTable('{{%formie_newlayout}}', [
+            'id' => $this->primaryKey(),
+            'formId' => $this->integer()->notNull(),
+            'layoutConfig' => $this->text(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        $this->archiveTableIfExists('{{%formie_newnestedlayout}}');
+        $this->createTable('{{%formie_newnestedlayout}}', [
+            'id' => $this->primaryKey(),
+            'fieldId' => $this->integer()->notNull(),
+            'layoutConfig' => $this->text(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
         $this->archiveTableIfExists('{{%formie_notifications}}');
         $this->createTable('{{%formie_notifications}}', [
             'id' => $this->primaryKey(),
@@ -169,6 +189,7 @@ class Install extends Migration
             'templateId' => $this->integer(),
             'pdfTemplateId' => $this->integer(),
             'name' => $this->text()->notNull(),
+            'handle' => $this->string(64)->notNull(),
             'enabled' => $this->boolean()->defaultValue(true),
             'subject' => $this->text(),
             'recipients' => $this->enum('recipients', ['email', 'conditions'])
@@ -309,15 +330,15 @@ class Install extends Migration
             'formId' => $this->integer(),
             'submissionId' => $this->integer(),
             'notificationId' => $this->integer(),
-            'subject' => $this->string(),
-            'to' => $this->string(),
-            'cc' => $this->string(),
-            'bcc' => $this->string(),
-            'replyTo' => $this->string(),
-            'replyToName' => $this->string(),
-            'from' => $this->string(),
-            'fromName' => $this->string(),
-            'sender' => $this->string(),
+            'subject' => $this->text(),
+            'to' => $this->text(),
+            'cc' => $this->text(),
+            'bcc' => $this->text(),
+            'replyTo' => $this->text(),
+            'replyToName' => $this->text(),
+            'from' => $this->text(),
+            'fromName' => $this->text(),
+            'sender' => $this->text(),
             'body' => $this->mediumText(),
             'htmlBody' => $this->mediumText(),
             'info' => $this->text(),
@@ -511,6 +532,8 @@ class Install extends Migration
             'formie_integrations',
             'formie_nested',
             'formie_nestedfieldrows',
+            'formie_newlayout',
+            'formie_newnestedlayout',
             'formie_notifications',
             'formie_pagesettings',
             'formie_payments',
@@ -597,6 +620,8 @@ class Install extends Migration
             'formie_integrations',
             'formie_nested',
             'formie_nestedfieldrows',
+            'formie_newlayout',
+            'formie_newnestedlayout',
             'formie_notifications',
             'formie_pagesettings',
             'formie_payments',

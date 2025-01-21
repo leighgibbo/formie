@@ -8,6 +8,7 @@ use verbb\formie\models\HtmlTag;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\PreviewableFieldInterface;
+use craft\base\SortableFieldInterface;
 use craft\gql\types\Number as NumberType;
 use craft\helpers\Db;
 use craft\helpers\Localization;
@@ -19,8 +20,14 @@ use yii\db\Schema;
 
 use Throwable;
 
-class Number extends FormField implements PreviewableFieldInterface
+class Number extends FormField implements PreviewableFieldInterface, SortableFieldInterface
 {
+    // Constants
+    // =========================================================================
+
+    public const EVENT_MODIFY_UNIQUE_QUERY = 'modifyUniqueQuery';
+
+
     // Static Methods
     // =========================================================================
 
@@ -48,6 +55,7 @@ class Number extends FormField implements PreviewableFieldInterface
     public int|float|null $min = null;
     public int|float|null $max = null;
     public ?int $decimals = null;
+    public bool $uniqueValue = false;
 
 
     // Public Methods
@@ -64,6 +72,9 @@ class Number extends FormField implements PreviewableFieldInterface
                 $config[$name] = Localization::normalizeNumber($config[$name]['value'], $config[$name]['locale']);
             }
         }
+
+        // Config normalization
+        self::normalizeConfig($config);
 
         parent::__construct($config);
     }
@@ -102,7 +113,7 @@ class Number extends FormField implements PreviewableFieldInterface
     {
         if ($value === null) {
             if ($this->defaultValue !== null && $this->isFresh($element)) {
-                return $this->defaultValue;
+                return (string)$this->defaultValue;
             }
             
             return null;
@@ -117,7 +128,19 @@ class Number extends FormField implements PreviewableFieldInterface
             return null;
         }
 
-        return $value;
+        return (string)$value;
+    }
+
+    public function getElementValidationRules(): array
+    {
+        $rules = parent::getElementValidationRules();
+        $rules[] = ['number', 'min' => $this->min, 'max' => $this->max];
+
+        if ($this->uniqueValue) {
+            $rules[] = 'validateUniqueValue';
+        }
+
+        return $rules;
     }
 
     /**
@@ -128,6 +151,7 @@ class Number extends FormField implements PreviewableFieldInterface
         // If decimals is 0 (or null, empty for whatever reason), don't run this
         if ($value !== null && $this->decimals) {
             $decimalSeparator = Craft::$app->getLocale()->getNumberSymbol(Locale::SYMBOL_DECIMAL_SEPARATOR);
+            
             try {
                 $value = number_format($value, $this->decimals, $decimalSeparator, '');
             } catch (Throwable $e) {
@@ -238,6 +262,12 @@ class Number extends FormField implements PreviewableFieldInterface
                 'fieldTypes' => [self::class],
             ]),
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
+            SchemaHelper::lightswitchField([
+                'label' => Craft::t('formie', 'Unique Value'),
+                'help' => Craft::t('formie', 'Whether to limit user input to unique values only. This will require that a value entered in this field does not already exist in a submission for this field and form.'),
+                'name' => 'uniqueValue',
+            ]),
         ];
     }
 
@@ -376,12 +406,7 @@ class Number extends FormField implements PreviewableFieldInterface
 
         $rules[] = [['defaultValue', 'min', 'max'], 'number'];
         $rules[] = [['decimals'], 'integer'];
-        $rules[] = [
-            ['max'],
-            'compare',
-            'compareAttribute' => 'min',
-            'operator' => '>=',
-        ];
+        $rules[] = [['max'], 'compare', 'compareAttribute' => 'min', 'operator' => '>='];
 
         if (!$this->decimals) {
             $rules[] = [['defaultValue', 'min', 'max'], 'integer'];

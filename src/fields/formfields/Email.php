@@ -2,7 +2,6 @@
 namespace verbb\formie\fields\formfields;
 
 use verbb\formie\base\FormField;
-use verbb\formie\events\ModifyEmailFieldUniqueQueryEvent;
 use verbb\formie\gql\types\generators\FieldAttributeGenerator;
 use verbb\formie\helpers\SchemaHelper;
 use verbb\formie\models\HtmlTag;
@@ -10,6 +9,7 @@ use verbb\formie\models\HtmlTag;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\PreviewableFieldInterface;
+use craft\base\SortableFieldInterface;
 use craft\db\Query;
 use craft\helpers\ArrayHelper;
 
@@ -17,14 +17,8 @@ use GraphQL\Type\Definition\Type;
 
 use yii\validators\EmailValidator;
 
-class Email extends FormField implements PreviewableFieldInterface
+class Email extends FormField implements PreviewableFieldInterface, SortableFieldInterface
 {
-    // Constants
-    // =========================================================================
-
-    public const EVENT_MODIFY_UNIQUE_QUERY = 'modifyUniqueQuery';
-
-
     // Static Methods
     // =========================================================================
 
@@ -81,7 +75,7 @@ class Email extends FormField implements PreviewableFieldInterface
         }
 
         if ($this->uniqueValue) {
-            $rules[] = 'validateUniqueEmail';
+            $rules[] = 'validateUniqueValue';
         }
 
         return $rules;
@@ -103,48 +97,6 @@ class Email extends FormField implements PreviewableFieldInterface
                     'domain' => $domain,
                 ]));
             }
-        }
-    }
-
-    public function validateUniqueEmail(ElementInterface $element): void
-    {
-        $value = $element->getFieldValue($this->handle);
-        $value = trim($value);
-
-        // Use a DB lookup for performance
-        $fieldHandle = $element->fieldColumnPrefix . $this->handle;
-        $contentTable = $element->contentTable;
-
-        if ($this->columnSuffix) {
-            $fieldHandle .= '_' . $this->columnSuffix;
-        }
-
-        $query = (new Query())
-            ->select($fieldHandle)
-            ->from(['c' => $contentTable])
-            ->where([$fieldHandle => $value, 'isIncomplete' => false, 'e.dateDeleted' => null])
-            ->leftJoin(['s' => '{{%formie_submissions}}'], "[[s.id]] = [[c.elementId]]")
-            ->leftJoin('{{%elements}} e', '[[e.id]] = [[s.id]]');
-
-        // Exclude _this_ element, if there is one
-        if ($element->id) {
-            $query->andWhere(['!=', 's.id', $element->id]);
-        }
-
-        // Fire a 'modifyEmailFieldUniqueQuery' event
-        $event = new ModifyEmailFieldUniqueQueryEvent([
-            'query' => $query,
-            'field' => $this,
-        ]);
-        $this->trigger(self::EVENT_MODIFY_UNIQUE_QUERY, $event);
-
-        // Be sure to check only against completed submission content
-        $emailExists = $event->query->exists();
-
-        if ($emailExists) {
-            $element->addError($this->handle, Craft::t('formie', '“{name}” must be unique.', [
-                'name' => $this->name,
-            ]));
         }
     }
 
@@ -227,6 +179,7 @@ class Email extends FormField implements PreviewableFieldInterface
                 'fieldTypes' => [self::class],
             ]),
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
             SchemaHelper::lightswitchField([
                 'label' => Craft::t('formie', 'Unique Value'),
                 'help' => Craft::t('formie', 'Whether to limit user input to unique values only. This will require that a value entered in this field does not already exist in a submission for this field and form.'),

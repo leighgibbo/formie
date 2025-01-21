@@ -154,6 +154,7 @@ class Fields extends Component
         if ($internalFields) {
             $groupedFields[] = [
                 'label' => Craft::t('formie', 'Internal'),
+                'handle' => 'internal',
                 'fields' => $internalFields,
             ];
         }
@@ -161,6 +162,7 @@ class Fields extends Component
         if ($commonFields) {
             $groupedFields[] = [
                 'label' => Craft::t('formie', 'Common Fields'),
+                'handle' => 'common',
                 'fields' => $commonFields,
             ];
         }
@@ -168,6 +170,7 @@ class Fields extends Component
         if ($advancedFields) {
             $groupedFields[] = [
                 'label' => Craft::t('formie', 'Advanced Fields'),
+                'handle' => 'advanced',
                 'fields' => $advancedFields,
             ];
         }
@@ -175,6 +178,7 @@ class Fields extends Component
         if ($elementFields) {
             $groupedFields[] = [
                 'label' => Craft::t('formie', 'Element Fields'),
+                'handle' => 'element',
                 'fields' => $elementFields,
             ];
         }
@@ -183,6 +187,7 @@ class Fields extends Component
         if ($registeredFields) {
             $groupedFields[] = [
                 'label' => Craft::t('formie', 'Custom Fields'),
+                'handle' => 'custom',
                 'fields' => $registeredFields,
             ];
         }
@@ -379,6 +384,11 @@ class Fields extends Component
                 continue;
             }
 
+            // Is this a non-Formie field, or a MissingField?
+            if (!($field instanceof FormFieldInterface)) {
+                continue;
+            }
+
             // Get the UI
             $uid = $matches['uid'];
 
@@ -472,6 +482,32 @@ class Fields extends Component
         return $allFields;
     }
 
+    public function checkRequiredPlugin(FieldInterface $field): bool
+    {
+        if (!method_exists($field, 'getRequiredPlugins')) {
+            throw new MissingComponentException();
+        }
+
+        foreach ($field::getRequiredPlugins() as $requiredPlugin) {
+            $version = $requiredPlugin['version'] ?? 0;
+            $handle = $requiredPlugin['handle'] ?? '';
+
+            if ($handle) {
+                if (!Formie::$plugin->getService()->isPluginInstalledAndEnabled($handle)) {
+                    throw new MissingComponentException();
+                }
+
+                $plugin = Craft::$app->getPlugins()->getPlugin($handle);
+
+                if (version_compare($plugin->getVersion(), $version, '<')) {
+                    throw new MissingComponentException();
+                }
+            }
+        }
+
+        return true;
+    }
+
     /**
      * Returns all fields on a provided element, for a given type. Includes drilling into nested fields.
      *
@@ -525,6 +561,19 @@ class Fields extends Component
                 Db::delete(CraftTable::FIELDS, [
                     'id' => $field->id,
                 ]);
+            }
+        }
+
+        // Do the same for Group/Repeater inner fields, where their owner Group/Repeater has been deleted.
+        foreach (Craft::$app->getFields()->getAllFields(false) as $field) {
+            if (str_contains($field->context, 'formieField:')) {
+                $sourceFieldUid = str_replace('formieField:', '', $field->context);
+
+                if (!Craft::$app->getFields()->getFieldByUid($sourceFieldUid)) {
+                    Db::delete(CraftTable::FIELDS, [
+                        'id' => $field->id,
+                    ]);
+                }
             }
         }
     }
@@ -1065,6 +1114,30 @@ class Fields extends Component
             $reservedWords,
             HandleValidator::$baseReservedWords
         );
+    }
+
+    public function getFieldsForForm(Form $form): array
+    {
+        $fields = [];
+
+        if ($fieldLayout =$form->getFormFieldLayout()) {
+            foreach ($fieldLayout->getCustomFields() as $field) {
+                $fields[] = $field;
+
+                // Include any nested fields at the top-level
+                if ($field instanceof NestedFieldInterface) {
+                    if ($nestedFieldLayout = $field->getFieldLayout()) {
+                        foreach ($nestedFieldLayout->getCustomFields() as $nestedField) {
+                            $nestedField->setParentField($field);
+
+                            $fields[] = $nestedField;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $fields;
     }
 
 

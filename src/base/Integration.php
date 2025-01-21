@@ -2,6 +2,7 @@
 namespace verbb\formie\base;
 
 use verbb\formie\Formie;
+use verbb\formie\elements\Form;
 use verbb\formie\elements\Submission;
 use verbb\formie\errors\IntegrationException;
 use verbb\formie\events\IntegrationConnectionEvent;
@@ -12,6 +13,8 @@ use verbb\formie\fields\formfields\Agree;
 use verbb\formie\helpers\StringHelper;
 use verbb\formie\models\IntegrationField;
 use verbb\formie\models\IntegrationFormSettings;
+use verbb\formie\models\Phone;
+use verbb\formie\models\Stencil;
 use verbb\formie\models\Token;
 use verbb\formie\records\Integration as IntegrationRecord;
 
@@ -67,9 +70,13 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
     // Static Methods
     // =========================================================================
 
-    /**
-     * @inheritDoc
-     */
+    public static function className(): string
+    {
+        $classNameParts = explode('\\', static::class);
+
+        return array_pop($classNameParts);
+    }
+
     public static function isSelectable(): bool
     {
         return false;
@@ -172,6 +179,10 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
             return StringHelper::toBoolean($value);
         }
 
+        if ($integrationField->getType() === IntegrationField::TYPE_PHONE) {
+            return Phone::toPhoneString($value);
+        }
+
         // Return the string representation of it by default (also default for integration fields)
         // You could argue we should return `null`, but let's not be too strict on types.
         return $value;
@@ -188,12 +199,10 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
     public array $cache = [];
     public ?string $tokenId = null;
     public ?string $uid = null;
+    public ?string $optInField = null;
 
-    // Used to retain the referrer URL from submissions
-    public ?string $referrer = '';
-
-    // Used to retain the referrer IP from submissions
-    public ?string $ipAddress = '';
+    // Store extra context for when running the integration
+    public array $context = [];
 
     protected ?Client $_client = null;
 
@@ -230,13 +239,16 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
 
     public function getClassHandle()
     {
-        return StringHelper::toKebabCase(static::displayName());
+        $classNameParts = explode('\\', static::class);
+        $end = array_pop($classNameParts);
+
+        return StringHelper::toKebabCase($end);
     }
 
     public function getEnabled(bool $parse = true): bool|string
     {
         if ($parse) {
-            return App::parseBooleanEnv($this->_enabled);
+            return App::parseBooleanEnv($this->_enabled) ?? false;
         }
 
         return $this->_enabled;
@@ -252,17 +264,37 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
         return '';
     }
 
-    /**
-     * @inheritDoc
-     */
     public function getSettingsHtml(): ?string
     {
         return '';
     }
 
+    public function getSettingsHtmlVariables(): array
+    {
+        return [
+            'integration' => $this,
+            'fieldVariables' => [
+                'plugin' => 'formie',
+                'name' => $this::displayName(),
+            ],
+        ];
+    }
+
     public function getFormSettingsHtml($form): string
     {
         return '';
+    }
+
+    public function getFormSettingsHtmlVariables(Form|Stencil $form): array
+    {
+        return [
+            'integration' => $this,
+            'form' => $form,
+            'fieldVariables' => [
+                'plugin' => 'formie',
+                'name' => $this::displayName(),
+            ],
+        ];
     }
 
     public function hasValidSettings(): bool
@@ -484,6 +516,10 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
 
     public function getRedirectUri(): string
     {
+        if (Craft::$app->getConfig()->getGeneral()->headlessMode) {
+            return UrlHelper::actionUrl('formie/integrations/callback');
+        }
+
         return UrlHelper::siteUrl('formie/integrations/callback');
     }
 
@@ -621,6 +657,18 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
         return $event->fieldValues;
     }
 
+    public function populateContext(): void
+    {
+        $request = Craft::$app->getRequest();
+
+        // Add some extra values to integrations to record in the context of being run
+        // Useful to maintain the referrer, current site, etc - things that aren't possible in a queue.
+        $this->context = [
+            'referrer' => $request->getReferrer(),
+            'ipAddress' => $request->getUserIP(),
+        ];
+    }
+
     public function beforeSendPayload(Submission $submission, &$endpoint, &$payload, &$method): bool
     {
         // If in the context of a queue. save the payload for debugging
@@ -639,6 +687,13 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
 
         if (!$event->isValid) {
             Integration::log($this, 'Sending payload cancelled by event hook.');
+        }
+
+        // Also, check for opt-in fields. This allows the above event to potentially alter things
+        if (!$this->enforceOptInField($submission)) {
+            Integration::log($this, 'Sending payload cancelled by opt-in field.');
+
+            return false;
         }
 
         // Allow events to alter some props
@@ -754,7 +809,8 @@ abstract class Integration extends SavableComponent implements IntegrationInterf
             if (StringHelper::startsWith($mappedFieldValue, '{submission:')) {
                 $mappedFieldValue = str_replace(['{submission:', '}'], ['', ''], $mappedFieldValue);
 
-                return $submission->$mappedFieldValue;
+                // Ensure the submission value is typecasted properly.
+                return static::convertValueForIntegration($submission->$mappedFieldValue, $integrationField);
             }
 
             // Get information about the fields we're mapping to. The field key/handle will be different

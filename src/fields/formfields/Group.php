@@ -4,11 +4,14 @@ namespace verbb\formie\fields\formfields;
 use verbb\formie\base\FormField;
 use verbb\formie\base\NestedFieldInterface;
 use verbb\formie\base\NestedFieldTrait;
+use verbb\formie\elements\db\NestedFieldRowQuery;
+use verbb\formie\elements\NestedFieldRow;
 use verbb\formie\gql\resolvers\elements\NestedFieldRowResolver;
 use verbb\formie\gql\types\generators\NestedFieldGenerator;
 use verbb\formie\gql\types\input\GroupInputType;
 use verbb\formie\helpers\SchemaHelper;
 use verbb\formie\models\HtmlTag;
+use verbb\formie\positions\Hidden as HiddenPosition;
 
 use Craft;
 use craft\base\EagerLoadingFieldInterface;
@@ -111,14 +114,21 @@ class Group extends FormField implements NestedFieldInterface, EagerLoadingField
             return;
         }
 
-        if ($fields = $this->getCustomFields()) {
-            foreach ($fields as $field) {
-                $fieldValue = $value[$field->handle] ?? null;
+        $blocks = [];
 
-                if ($fieldValue) {
-                    $field->populateValue($fieldValue);
-                }
-            }
+        $row = new NestedFieldRow();
+        $row->fieldId = $this->id;
+
+        // Ensure that the siteId is set to the current site
+        $row->siteId = Craft::$app->getSites()->getCurrentSite()->id;
+
+        $row->setFieldValues($value);
+
+        $blocks[] = $row;
+
+        if ($blocks) {
+            $this->defaultValue = new NestedFieldRowQuery(NestedFieldRow::class);
+            $this->defaultValue->setBlocks($blocks);
         }
     }
 
@@ -200,7 +210,7 @@ class Group extends FormField implements NestedFieldInterface, EagerLoadingField
 
         return [
             'name' => $this->handle,
-            'type' => Type::nonNull(Gql::getUnionType($typeName, $typeArray)),
+            'type' => Gql::getUnionType($typeName, $typeArray),
             'resolve' => NestedFieldRowResolver::class . '::resolve',
             'complexity' => Gql::eagerLoadComplexity(),
         ];
@@ -220,8 +230,15 @@ class Group extends FormField implements NestedFieldInterface, EagerLoadingField
         }
 
         if ($key === 'fieldLabel') {
+            $labelPosition = $context['labelPosition'] ?? null;
+
             return new HtmlTag('legend', [
-                'class' => 'fui-legend',
+                'class' => [
+                    'fui-legend',
+                ],
+                'data' => [
+                    'fui-sr-only' => $labelPosition instanceof HiddenPosition ? true : false,
+                ],
             ]);
         }
 

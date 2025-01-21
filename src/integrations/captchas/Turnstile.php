@@ -20,6 +20,9 @@ class Turnstile extends Captcha
     public ?string $secretKey = null;
     public ?string $siteKey = null;
     public string $scriptLoadingMethod = 'asyncDefer';
+    public string $theme = 'auto';
+    public string $size = 'normal';
+    public string $appearance = 'always';
 
 
     // Public Methods
@@ -40,17 +43,16 @@ class Turnstile extends Captcha
      */
     public function getSettingsHtml(): ?string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/turnstile/_plugin-settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/turnstile/_plugin-settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/turnstile/_form-settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+        
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/turnstile/_form-settings', $variables);
     }
 
     /**
@@ -73,14 +75,29 @@ class Turnstile extends Captcha
             'siteKey' => App::parseEnv($this->siteKey),
             'formId' => $form->getFormId(),
             'loadingMethod' => $this->scriptLoadingMethod,
+            'theme' => $this->theme,
+            'size' => $this->size,
+            'appearance' => $this->appearance,
         ];
 
-        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/turnstile.js', true);
+        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/turnstile.js');
 
         return [
             'src' => $src,
             'module' => 'FormieTurnstile',
             'settings' => $settings,
+        ];
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getGqlVariables(Form $form, $page = null): array
+    {
+        return [
+            'formId' => $form->getFormId(),
+            'sessionKey' => 'siteKey',
+            'value' => App::parseEnv($this->siteKey),
         ];
     }
 
@@ -125,6 +142,9 @@ class Turnstile extends Captcha
         return [
             'siteKey' => $this->siteKey,
             'scriptLoadingMethod' => $this->scriptLoadingMethod,
+            'theme' => $this->theme,
+            'size' => $this->size,
+            'appearance' => $this->appearance,
         ];
     }    
 }

@@ -4,11 +4,15 @@ namespace verbb\formie\fields\formfields;
 use verbb\formie\base\FormFieldInterface;
 use verbb\formie\helpers\SchemaHelper;
 use verbb\formie\models\HtmlTag;
+use verbb\formie\positions\Hidden as HiddenPosition;
 
 use Craft;
 use craft\base\ElementInterface;
 use craft\fields\data\MultiOptionsFieldData;
+use craft\helpers\Localization;
 use craft\helpers\StringHelper;
+use craft\i18n\Locale;
+use craft\validators\ArrayValidator;
 
 class Checkboxes extends BaseOptionsField implements FormFieldInterface
 {
@@ -47,10 +51,28 @@ class Checkboxes extends BaseOptionsField implements FormFieldInterface
     public ?string $layout = null;
     public ?string $toggleCheckbox = null;
     public ?string $toggleCheckboxLabel = null;
+    public bool $limitOptions = false;
+    public int|float|null $min = null;
+    public int|float|null $max = null;
 
 
     // Public Methods
     // =========================================================================
+
+    public function __construct(array $config = [])
+    {
+        // Normalize number settings
+        foreach (['min', 'max'] as $name) {
+            if (isset($config[$name]) && is_array($config[$name])) {
+                $config[$name] = Localization::normalizeNumber($config[$name]['value'], $config[$name]['locale']);
+            }
+        }
+
+        // Config normalization
+        self::normalizeConfig($config);
+
+        parent::__construct($config);
+    }
 
     /**
      * @inheritDoc
@@ -88,6 +110,42 @@ class Checkboxes extends BaseOptionsField implements FormFieldInterface
         return $options;
     }
 
+    public function getElementValidationRules(): array
+    {
+        $rules = parent::getElementValidationRules();
+
+        if ($this->limitOptions) {
+            $rules[] = [$this->handle, 'validateLimitOptions', 'skipOnEmpty' => false];
+        }
+
+        return $rules;
+    }
+
+    public function validateLimitOptions(ElementInterface $element): void
+    {
+        if ($this->limitOptions) {
+            $arrayValidator = new ArrayValidator([
+                'min' => $this->min ?: null,
+                'max' => $this->max ?: null,
+                'tooFew' => $this->min ? Craft::t('app', '{attribute} should contain at least {min, number} {min, plural, one{option} other{options}}.', [
+                    'attribute' => Craft::t('formie', $this->name),
+                    'min' => $this->min,
+                ]) : null,
+                'tooMany' => $this->max ? Craft::t('app', '{attribute} should contain at most {max, number} {max, plural, one{option} other{options}}.', [
+                    'attribute' => Craft::t('formie', $this->name),
+                    'max' => $this->max,
+                ]) : null,
+                'skipOnEmpty' => false,
+            ]);
+
+            $value = $element->getFieldValue($this->handle);
+
+            if (!$arrayValidator->validate($value, $error)) {
+                $element->addError($this->handle, $error);
+            }
+        }
+    }
+
     /**
      * @inheritDoc
      */
@@ -113,7 +171,7 @@ class Checkboxes extends BaseOptionsField implements FormFieldInterface
     public function getFrontEndJsModules(): ?array
     {
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/checkbox-radio.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/checkbox-radio.js'),
             'module' => 'FormieCheckboxRadio',
         ];
     }
@@ -180,7 +238,48 @@ class Checkboxes extends BaseOptionsField implements FormFieldInterface
                 'name' => 'errorMessage',
                 'if' => '$get(required).value',
             ]),
+            SchemaHelper::lightswitchField([
+                'label' => Craft::t('formie', 'Limit Options'),
+                'help' => Craft::t('formie', 'Whether to limit the options users can choose for this field.'),
+                'name' => 'limitOptions',
+            ]),
+            [
+                '$el' => 'div',
+                'attrs' => [
+                    'class' => 'fui-row',
+                ],
+                'if' => '$get(limitOptions).value',
+                'children' => [
+                    [
+                        '$el' => 'div',
+                        'attrs' => [
+                            'class' => 'fui-col-6',
+                        ],
+                        'children' => [
+                            SchemaHelper::numberField([
+                                'label' => Craft::t('formie', 'Min Value'),
+                                'help' => Craft::t('formie', 'Set the minimum options that users must select.'),
+                                'name' => 'min',
+                            ]),
+                        ],
+                    ],
+                    [
+                        '$el' => 'div',
+                        'attrs' => [
+                            'class' => 'fui-col-6',
+                        ],
+                        'children' => [
+                            SchemaHelper::numberField([
+                                'label' => Craft::t('formie', 'Max Value'),
+                                'help' => Craft::t('formie', 'Set the maximum options that users must select.'),
+                                'name' => 'max',
+                            ]),
+                        ],
+                    ],
+                ],
+            ],
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
             SchemaHelper::selectField([
                 'label' => Craft::t('formie', 'Add Toggle Checkbox'),
                 'help' => Craft::t('formie', 'Whether to add an additional checkbox to toggle all checkboxes in this field by.'),
@@ -262,8 +361,15 @@ class Checkboxes extends BaseOptionsField implements FormFieldInterface
         }
 
         if ($key === 'fieldLabel') {
+            $labelPosition = $context['labelPosition'] ?? null;
+
             return new HtmlTag('legend', [
-                'class' => 'fui-legend',
+                'class' => [
+                    'fui-legend',
+                ],
+                'data' => [
+                    'fui-sr-only' => $labelPosition instanceof HiddenPosition ? true : false,
+                ],
             ]);
         }
 
@@ -280,30 +386,27 @@ class Checkboxes extends BaseOptionsField implements FormFieldInterface
         }
 
         if ($key === 'fieldInput') {
-            $optionValue = $context['option']['value'] ?? '';
-            $id = $this->getHtmlId($form, StringHelper::toKebabCase($optionValue));
-            $dataId = $this->getHtmlDataId($form, StringHelper::toKebabCase($optionValue));
+            $optionValue = $this->getFieldInputOptionValue($context);
 
             return new HtmlTag('input', [
                 'type' => 'checkbox',
-                'id' => $id,
+                'id' => $this->getHtmlId($form, $optionValue),
                 'class' => 'fui-input fui-checkbox-input',
                 'name' => $this->getHtmlName('[]'),
                 'required' => $this->required ? true : null,
                 'data' => [
-                    'fui-id' => $dataId,
+                    'fui-id' => $this->getHtmlDataId($form, $optionValue),
                     'fui-message' => Craft::t('formie', $this->errorMessage) ?: null,
                 ],
             ], $this->getInputAttributes());
         }
 
         if ($key === 'fieldOptionLabel') {
-            $optionValue = $context['option']['value'] ?? '';
-            $id = $this->getHtmlId($form, StringHelper::toKebabCase($optionValue));
+            $optionValue = $this->getFieldInputOptionValue($context);
 
             return new HtmlTag('label', [
                 'class' => 'fui-checkbox-label',
-                'for' => $id,
+                'for' => $this->getHtmlId($form, $optionValue),
             ]);
         }
 
@@ -314,9 +417,16 @@ class Checkboxes extends BaseOptionsField implements FormFieldInterface
     // Protected Methods
     // =========================================================================
 
-    /**
-     * @inheritdoc
-     */
+    protected function defineRules(): array
+    {
+        $rules = parent::defineRules();
+
+        $rules[] = [['min', 'max'], 'number'];
+        $rules[] = [['max'], 'compare', 'compareAttribute' => 'min', 'operator' => '>='];
+
+        return $rules;
+    }
+
     protected function optionsSettingLabel(): string
     {
         return Craft::t('app', 'Checkbox Options');

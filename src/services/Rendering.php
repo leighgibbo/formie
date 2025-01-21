@@ -1,6 +1,7 @@
 <?php
 namespace verbb\formie\services;
 
+use verbb\formie\Formie;
 use verbb\formie\base\FormField;
 use verbb\formie\base\FormFieldInterface;
 use verbb\formie\elements\Form;
@@ -13,6 +14,7 @@ use verbb\formie\models\Notification;
 
 use Craft;
 use craft\base\Component;
+use craft\helpers\ArrayHelper;
 use craft\helpers\Html;
 use craft\helpers\Json;
 use craft\helpers\Template as TemplateHelper;
@@ -65,11 +67,16 @@ class Rendering extends Component
      * @throws LoaderError
      * @throws MissingComponentException
      */
-    public function renderForm(Form|string|null $form, array $renderOptions = []): ?Markup
+    public function renderForm(Form|string|null $form, array $renderOptions = [], bool $fullRender = true): ?Markup
     {
         // Allow an empty form to fail silently
         if (!($form = $this->_getFormFromTemplate($form))) {
             return null;
+        }
+
+        // Give the form a unique ID for each render, to help with multiple renders of the same form
+        if ($fullRender) {
+            $form->setFormId($form->getFormId(false));
         }
 
         // Fire a 'modifyFormRenderOptions' event
@@ -115,13 +122,13 @@ class Rendering extends Component
         $outputJs = $form->getFrontEndTemplateOption('outputJsBase');
 
         if ($outputCssLocation !== FormTemplate::MANUAL && $outputCss && $renderCss) {
-            $css = $this->renderFormAssets($form, self::RENDER_TYPE_CSS);
+            $css = $this->renderFormAssets($form, self::RENDER_TYPE_CSS, false, $renderOptions);
 
             $output = TemplateHelper::raw($output . $css);
         }
 
         if ($outputJsLocation !== FormTemplate::MANUAL && $outputJs && $renderJs) {
-            $js = $this->renderFormAssets($form, self::RENDER_TYPE_JS);
+            $js = $this->renderFormAssets($form, self::RENDER_TYPE_JS, false, $renderOptions);
 
             $output = TemplateHelper::raw($output . $js);
         }
@@ -242,7 +249,7 @@ class Rendering extends Component
         // So we can easily re-use code, we just call the `renderForm` function
         // This will register any assets, and should be included outside of cached areas.
         // It should be called like `{% do craft.formie.registerAssets(handle) %}`
-        $this->renderForm($form, $renderOptions);
+        $this->renderForm($form, $renderOptions, false);
     }
 
     /**
@@ -257,7 +264,7 @@ class Rendering extends Component
      * @return Markup|null
      * @throws InvalidConfigException
      */
-    public function renderFormAssets(Form|string|null $form, string $type = null, bool $forceInline = false, array $attributes = []): ?Markup
+    public function renderFormAssets(Form|string|null $form, string $type = null, bool $forceInline = false, array $renderOptions = []): ?Markup
     {
         // Allow an empty form to fail silently
         if (!($form = $this->_getFormFromTemplate($form))) {
@@ -272,20 +279,22 @@ class Rendering extends Component
         $outputJsLocation = $form->getFrontEndTemplateLocation('outputJsLocation');
 
         $assetPath = '@verbb/formie/web/assets/frontend/dist/';
-        $jsFile = Craft::$app->getAssetManager()->getPublishedUrl($assetPath . 'js/formie.js', true);
-        $cssLayout = Craft::$app->getAssetManager()->getPublishedUrl($assetPath . 'css/formie-base.css', true);
-        $cssTheme = Craft::$app->getAssetManager()->getPublishedUrl($assetPath . 'css/formie-theme.css', true);
+        $jsFile = Craft::$app->getAssetManager()->getPublishedUrl($assetPath, true, 'js/formie.js');
+        $cssLayout = Craft::$app->getAssetManager()->getPublishedUrl($assetPath, true, 'css/formie-base.css');
+        $cssTheme = Craft::$app->getAssetManager()->getPublishedUrl($assetPath, true, 'css/formie-theme.css');
 
         $output = [];
 
         if ($type !== self::RENDER_TYPE_JS) {
+            $cssAttributes = $renderOptions['cssAttributes'] ?? [];
+
             // Only output this if we're not showing the theme. We bundle the two together
             // during build, so we don't have to serve two stylesheets.
             if ($outputCssLayout && !$outputCssTheme) {
                 if ($outputCssLocation === FormTemplate::PAGE_HEADER && !$forceInline) {
                     $view->registerCssFile($cssLayout);
                 } else {
-                    $output[] = Html::cssFile($cssLayout, $attributes);
+                    $output[] = Html::cssFile($cssLayout, $cssAttributes);
                 }
             }
 
@@ -293,27 +302,31 @@ class Rendering extends Component
                 if ($outputCssLocation === FormTemplate::PAGE_HEADER && !$forceInline) {
                     $view->registerCssFile($cssTheme);
                 } else {
-                    $output[] = Html::cssFile($cssTheme, $attributes);
+                    $output[] = Html::cssFile($cssTheme, $cssAttributes);
                 }
             }
         }
 
         if ($type !== self::RENDER_TYPE_CSS) {
+            // Some attributes are JS-render related
+            $scriptAttributes = $this->_getScriptAttributes($renderOptions);
+            $jsAttributes = $this->_getJsAttributes($renderOptions);
+
             // Only output this file once. It's applicable to all forms on a page.
             if (!$this->_renderedJs) {
                 if ($outputJsLocation === FormTemplate::PAGE_FOOTER && !$forceInline) {
-                    $view->registerJsFile($jsFile, array_merge(['defer' => true], $attributes));
+                    $view->registerJsFile($jsFile, $jsAttributes);
                 } else {
-                    $output[] = Html::jsFile($jsFile, array_merge(['defer' => true], $attributes));
+                    $output[] = Html::jsFile($jsFile, $jsAttributes);
                 }
 
                 // Add locale definition JS variables
                 $jsString = 'window.FormieTranslations=' . Json::encode($this->getFrontEndJsTranslations()) . ';';
 
                 if ($outputJsLocation === FormTemplate::PAGE_FOOTER && !$forceInline) {
-                    $view->registerJs($jsString, View::POS_END);
+                    $view->registerScript($jsString, View::POS_END, $scriptAttributes);
                 } else {
-                    $output[] = Html::script($jsString, ['type' => 'text/javascript']);
+                    $output[] = Html::script($jsString, $scriptAttributes);
                 }
 
                 $this->_renderedJs = true;
@@ -330,12 +343,13 @@ class Rendering extends Component
             'File must be smaller than {filesize} MB.',
             'File must be larger than {filesize} MB.',
             'Choose up to {files} files.',
+            '{startTag}{num}{endTag} character left',
             '{startTag}{num}{endTag} characters left',
+            '{startTag}{num}{endTag} word left',
             '{startTag}{num}{endTag} words left',
 
             // Field validation messages
             'This field is required.',
-            'Please select a value.',
             'Please select a value.',
             'Please select at least one value.',
             'Please fill out this field.',
@@ -363,6 +377,16 @@ class Rendering extends Component
             'Invalid country code',
             'Too short',
             'Too long',
+
+            // PayPal
+            'Missing Authorization ID for approval.',
+            'Payment authorized. Finalize the form to complete payment.',
+            'Unable to authorize payment. Please try again.',
+
+            // Opayo
+            'The request timed out.',
+            'The request encountered a network error. Please try again.',
+
         ]);
     }
 
@@ -463,6 +487,11 @@ class Rendering extends Component
             try {
                 $field = $form->getFieldByHandle($key);
 
+                // Prevent users using long-hand Twig `{{` to prevent injection execution. Only an issue for some fields like Hidden fields.
+                if (is_string($value)) {
+                    $value = str_replace(['{{', '}}', '{%', '%}'], ['{', '}', '', ''], $value);
+                }
+
                 if ($field) {
                     // Store any visibly disabled fields against the form to apply later
                     if ($field->visibility === 'disabled') {
@@ -479,6 +508,13 @@ class Rendering extends Component
                     }
                 }
             } catch (Throwable $e) {
+                Formie::error('Error populating form values for “{key}”. Template error: “{message}” {file}:{line}', [
+                    'key' => $key,
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
+
                 continue;
             }
         }
@@ -549,7 +585,7 @@ class Rendering extends Component
 
         // Render the form, and capture any CSS being output to the asset manager. Grab that and output it directly.
         // This helps when targeting head/body/inline and ensure we output it **here**
-        $this->renderForm($form, $renderOptions);
+        $this->renderForm($form, $renderOptions, false);
 
         $this->_cssFiles = $this->clearFileBuffer('cssFiles', $view);
         $this->_cssFiles = array_merge($this->_cssFiles, [$view->clearCssBuffer()]);
@@ -605,12 +641,12 @@ class Rendering extends Component
      * @param array $renderOptions
      * @return Markup|null
      */
-    public function renderCss(bool $inline = false): ?Markup
+    public function renderCss(bool $inline = false, array $renderOptions = []): ?Markup
     {
         $view = Craft::$app->getView();
         $assetPath = '@verbb/formie/web/assets/frontend/dist/';
-        $cssLayout = Craft::$app->getAssetManager()->getPublishedUrl($assetPath . 'css/formie-base.css', true);
-        $cssTheme = Craft::$app->getAssetManager()->getPublishedUrl($assetPath . 'css/formie-theme.css', true);
+        $cssLayout = Craft::$app->getAssetManager()->getPublishedUrl($assetPath, true, 'css/formie-base.css');
+        $cssTheme = Craft::$app->getAssetManager()->getPublishedUrl($assetPath, true, 'css/formie-theme.css');
 
         $output = [];
 
@@ -631,23 +667,27 @@ class Rendering extends Component
      * @param array $renderOptions
      * @return Markup|null
      */
-    public function renderJs(bool $inline = false): ?Markup
+    public function renderJs(bool $inline = false, array $renderOptions = []): ?Markup
     {
         $view = Craft::$app->getView();
         $assetPath = '@verbb/formie/web/assets/frontend/dist/';
-        $jsFile = Craft::$app->getAssetManager()->getPublishedUrl($assetPath . 'js/formie.js', true);
+        $jsFile = Craft::$app->getAssetManager()->getPublishedUrl($assetPath, true, 'js/formie.js');
 
         $output = [];
 
         // Add locale definition JS variables
         $jsString = 'window.FormieTranslations=' . Json::encode($this->getFrontEndJsTranslations()) . ';';
 
+        // Some attributes are JS-render related
+        $scriptAttributes = $this->_getScriptAttributes($renderOptions);
+        $jsAttributes = $this->_getJsAttributes($renderOptions);
+
         if ($inline) {
-            $output[] = Html::jsFile($jsFile, array_merge(['defer' => true]));
-            $output[] = Html::script($jsString, ['type' => 'text/javascript']);
+            $output[] = Html::jsFile($jsFile, $jsAttributes);
+            $output[] = Html::script($jsString, $scriptAttributes);
         } else {
-            $view->registerJsFile($jsFile, array_merge(['defer' => true]));
-            $view->registerJs($jsString, View::POS_END);
+            $view->registerJsFile($jsFile, $jsAttributes);
+            $view->registerScript($jsString, View::POS_END, $scriptAttributes);
         }
 
         return TemplateHelper::raw(implode(PHP_EOL, $output));
@@ -681,5 +721,27 @@ class Rendering extends Component
         }
 
         return null;
+    }
+
+    private function _getJsAttributes(array $renderOptions): array
+    {
+        // Some attributes are JS-render related
+        $attributes = $this->_getScriptAttributes($renderOptions);
+        $jsAttributes = $renderOptions['jsAttributes'] ?? [];
+        $jsAttributes = array_merge($attributes, ['defer' => true], $jsAttributes);
+
+        if (isset($renderOptions['initJs']) && $renderOptions['initJs'] === false) {
+            $jsAttributes['data-manual-init'] = true;
+        }
+
+        return $jsAttributes;
+    }
+
+    private function _getScriptAttributes(array $renderOptions): array
+    {
+        $attributes = ['type' => 'text/javascript'];
+        $scriptAttributes = $renderOptions['scriptAttributes'] ?? [];
+
+        return array_merge($attributes, $scriptAttributes);
     }
 }

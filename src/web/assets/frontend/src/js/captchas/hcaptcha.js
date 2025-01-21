@@ -1,8 +1,11 @@
+import { FormieCaptchaProvider } from './captcha-provider';
 import { hcaptcha } from './inc/hcaptcha';
 import { t, eventKey } from '../utils/utils';
 
-export class FormieHcaptcha {
+export class FormieHcaptcha extends FormieCaptchaProvider {
     constructor(settings = {}) {
+        super(settings);
+
         this.$form = settings.$form;
         this.form = this.$form.form;
         this.siteKey = settings.siteKey;
@@ -50,6 +53,10 @@ export class FormieHcaptcha {
     }
 
     renderCaptcha() {
+        // Reset certain things about the captcha, if we're re-running this on the same page without refresh
+        this.token = null;
+        this.submitHandler = null;
+
         this.$placeholder = null;
 
         // Get the active page
@@ -93,19 +100,8 @@ export class FormieHcaptcha {
             $token.remove();
         }
 
-        // Check if we actually need to re-render this, or just refresh it...
-        const currentHcaptchaId = this.$placeholder.getAttribute('data-hcaptcha-id');
-
-        if (currentHcaptchaId !== null) {
-            this.hcaptchaId = currentHcaptchaId;
-
-            hcaptcha.reset(this.hcaptchaId);
-
-            return;
-        }
-
-        // Render the hCaptcha
-        hcaptcha.render(this.$placeholder, {
+        // Render the captcha inside the placeholder
+        hcaptcha.render(this.createInput(), {
             sitekey: this.siteKey,
             size: this.size,
             callback: this.onVerify.bind(this),
@@ -115,9 +111,6 @@ export class FormieHcaptcha {
             'close-callback': this.onClose.bind(this),
         }, (id) => {
             this.hcaptchaId = id;
-
-            // Update the placeholder with our ID, in case we need to re-render it
-            this.$placeholder.setAttribute('data-hcaptcha-id', id);
         });
     }
 
@@ -146,11 +139,20 @@ export class FormieHcaptcha {
         // Save for later to trigger real submit
         this.submitHandler = e.detail.submitHandler;
 
-        // Trigger hCaptcha
-        hcaptcha.execute(this.hcaptchaId);
+        // Check if the captcha has already been solved (someone clicking on the tick), otherwise the captcha triggeres twice
+        if (this.token) {
+            this.onVerify(this.token);
+        } else {
+            // Trigger hCaptcha - or check
+            hcaptcha.execute(this.hcaptchaId);
+        }
     }
 
     onVerify(token) {
+        // Store the token for a potential next time. This is useful if the user is clicking the tick on the captcha, then
+        // submitting, which would trigger the captcha multiple times
+        this.token = token;
+
         // Submit the form - we've hijacked it up until now
         if (this.submitHandler) {
             // Run the next submit action for the form. TODO: make this better!
@@ -173,12 +175,14 @@ export class FormieHcaptcha {
         console.log('hCaptcha has expired - reloading.');
 
         hcaptcha.reset(this.hcaptchaId);
+        this.token = null;
     }
 
     onChallengeExpired() {
         console.log('hCaptcha has expired challenge - reloading.');
 
         hcaptcha.reset(this.hcaptchaId);
+        this.token = null;
     }
 
     onError(error) {
@@ -189,6 +193,8 @@ export class FormieHcaptcha {
         if (this.$form.form.formTheme) {
             this.$form.form.formTheme.removeLoading();
         }
+
+        this.token = null;
     }
 }
 

@@ -65,7 +65,7 @@ class PayWay extends Payment
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Provide payment capabilities for your forms with Westpac PayWay.');
+        return Craft::t('formie', 'Provide payment capabilities for your forms with {name}.', ['name' => static::displayName()]);
     }
 
     /**
@@ -113,7 +113,7 @@ class PayWay extends Payment
         ];
 
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/payments/payway.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/payments/payway.js'),
             'module' => 'FormiePayWay',
             'settings' => $settings,
         ];
@@ -151,7 +151,7 @@ class PayWay extends Payment
         // Capture the authorized payment
         try {
             $field = $this->getField();
-            $fieldValue = $submission->getFieldValue($field->handle);
+            $fieldValue = $this->getPaymentFieldValue($submission);
             $paywayTokenId = $fieldValue['paywayTokenId'] ?? null;
 
             if (!$paywayTokenId || !is_string($paywayTokenId)) {
@@ -225,7 +225,7 @@ class PayWay extends Payment
 
             Integration::apiError($this, $e, $this->throwApiError);
 
-            $submission->addError($field->handle, Craft::t('formie', $e->getMessage()));
+            $this->addFieldError($submission, Craft::t('formie', $e->getMessage()));
             
             $payment = new PaymentModel();
             $payment->integrationId = $this->id;

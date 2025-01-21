@@ -43,9 +43,9 @@ class Javascript extends Captcha
      */
     public function getSettingsHtml(): ?string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/javascript/_plugin-settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+        
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/javascript/_plugin-settings', $variables);
     }
 
     /**
@@ -84,7 +84,7 @@ class Javascript extends Captcha
             'value' => $value,
         ];
 
-        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/javascript.js', true);
+        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/javascript.js');
 
         // Add the JS value separately, so it's not cached in the form as settings
         $js = 'window.Formie' . $sessionKey . '=' . Json::encode($value) . ';';
@@ -114,6 +114,11 @@ class Javascript extends Captcha
             'sessionKey' => $sessionKey,
             'value' => $value,
         ];
+    }
+    
+    public function getGqlVariables(Form $form, $page = null): array
+    {
+        return $this->getRefreshJsVariables($form, $page);
     }
 
     /**

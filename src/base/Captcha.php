@@ -42,7 +42,7 @@ abstract class Captcha extends Integration
     {
         $handle = StringHelper::toKebabCase($this->getHandle());
 
-        return Craft::$app->getAssetManager()->getPublishedUrl("@verbb/formie/web/assets/cp/dist/img/captchas/{$handle}.svg", true);
+        return Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/cp/dist/', true, "img/captchas/{$handle}.svg");
     }
 
     public function getFormSettingsHtml($form): string
@@ -90,6 +90,11 @@ abstract class Captcha extends Integration
         return null;
     }
 
+    public function getGqlVariables(Form $form, $page = null): ?array
+    {
+        return null;
+    }
+
     /**
      * Validates the submission.
      *
@@ -128,7 +133,7 @@ abstract class Captcha extends Integration
         // Handle the traditional param, as a POST param
         $param = Craft::$app->getRequest()->getParam($name);
 
-        if ($allowEmptyString || $param) {
+        if (($allowEmptyString && $param === '') || $param) {
             return $param;
         }
 
@@ -137,7 +142,7 @@ abstract class Captcha extends Integration
         $paramName = $param['name'] ?? null;
 
         if ($paramName === $name) {
-            if ($allowEmptyString || $param) {
+            if (($allowEmptyString && $param === '') || $param) {
                 return $param['value'] ?? null;
             }
         }

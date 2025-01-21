@@ -4,7 +4,7 @@
 
 {% do view.registerAssetBundle('verbb\\formie\\web\\assets\\cp\\CpAsset') -%}
 
-{% set jsFile = view.getAssetManager().getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/formie.js', true) %}
+{% set jsFile = view.getAssetManager().getPublishedUrl('@verbb/formie/web/assets/frontend/', true, 'dist/js/formie.js') %}
 {% do view.registerJsFile(jsFile) %}
 
 {% set isNew = submission.id ? false : true %}
@@ -22,8 +22,27 @@
 {% set bodyClass = 'fui-body fui-submission' %}
 {% set selectedSubnavItem = 'submissions' %}
 {% set saveShortcutRedirect = '{cpEditUrl}' %}
+{% set selectedSiteId = submission.siteId %}
+{% set selectedSiteHandle = craft.app.request.getParam('site') %}
+
+{% if selectedSiteHandle %}
+    {% set selectedSite = craft.app.sites.getSiteByHandle(selectedSiteHandle) %}
+
+    {% if selectedSite %}
+        {% set selectedSiteId = selectedSite.id %}
+    {% endif %}
+{% endif %}
 
 {% hook 'formie.cp.submissions.edit' %}
+
+{% block contextMenu %}
+    {% if craft.app.getIsMultiSite() %}
+        {% include '_elements/sitemenu' with {
+            selectedSiteId: selectedSiteId,
+            urlFormat: "formie/submissions/#{form.handle}/#{craft.app.request.getSegment(4)}?site={handle}"
+        } %}
+    {% endif %}
+{% endblock %}
 
 {% block actionButton %}
 
@@ -81,7 +100,7 @@
         {% endif %}
 
         {% if craft.app.getIsMultiSite() %}
-            <input type="hidden" name="siteId" value="{{ submission.siteId }}">
+            <input type="hidden" name="siteId" value="{{ selectedSiteId }}">
         {% endif %}
 
         <div id="fields">
@@ -187,8 +206,8 @@
     {% endif %}
 </div>
 
-{% if submission.isSpam %}
-    <div id="meta-details" class="meta">
+<div id="meta-details" class="meta">
+    {% if submission.isSpam %}
         <div class="field">
             <div class="heading">
                 <label class="">{{ 'Status' | t('formie') }}</label>
@@ -204,26 +223,26 @@
                         <span class="status red"></span>
                     {% endif %}
 
-                    {{ 'Spam' | t('formie') }} <span class="info">{{ submission.spamReason }}</span>
+                    {{ 'Spam' | t('formie') }} {% if submission.spamReason %}<span class="info">{{ submission.spamReason }}</span>{% endif %}
                 </div>
             </div>
         </div>
+    {% endif %}
 
-        <div class="field">
-            <div class="heading">
-                <label class="">{{ 'Mark as Spam' | t('formie') }}</label>
-            </div>
+    <div class="field">
+        <div class="heading">
+            <label class="">{{ 'Mark as Spam' | t('formie') }}</label>
+        </div>
 
-            <div>
-                {{ forms.lightswitchField({
-                    id: 'isSpam',
-                    name: 'isSpam',
-                    on: submission.isSpam,
-                }) }}
-            </div>
+        <div>
+            {{ forms.lightswitchField({
+                id: 'isSpam',
+                name: 'isSpam',
+                on: submission.isSpam,
+            }) }}
         </div>
     </div>
-{% endif %}
+</div>
 
 {% set notifications = form.getNotifications() %}
 

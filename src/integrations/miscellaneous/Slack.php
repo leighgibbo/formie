@@ -172,9 +172,7 @@ class Slack extends Miscellaneous
         try {
             if ($this->channelType === self::TYPE_WEBHOOK) {
                 $payload = [
-                    'json' => [
-                        'text' => $this->_renderMessage($submission),
-                    ],
+                    'text' => $this->_renderMessage($submission),
                 ];
 
                 $response = $this->deliverPayloadRequest($submission, $this->webhook, $payload);
@@ -234,7 +232,9 @@ class Slack extends Miscellaneous
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::apiError($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $this->_client = Craft::createGuzzleClient([
@@ -274,7 +274,7 @@ class Slack extends Miscellaneous
 
     private function _renderMessage($submission): array|string
     {
-        $html = RichTextHelper::getHtmlContent($this->message, $submission);
+        $html = RichTextHelper::getHtmlContent($this->message, $submission, false);
 
         $converter = new HtmlConverter(['strip_tags' => true]);
         $markdown = $converter->convert($html);

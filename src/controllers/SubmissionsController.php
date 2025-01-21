@@ -7,6 +7,7 @@ use verbb\formie\elements\Form;
 use verbb\formie\elements\Submission;
 use verbb\formie\events\SubmissionEvent;
 use verbb\formie\helpers\Variables;
+use verbb\formie\models\IntegrationResponse;
 use verbb\formie\models\Settings;
 use verbb\formie\web\assets\cp\CpAsset;
 
@@ -249,13 +250,13 @@ class SubmissionsController extends Controller
         // Now populate the rest of it from the post data
         $submission->enabled = true;
         $submission->enabledForSite = true;
-        $submission->title = $request->getParam('title') ?: $submission->title;
-        $submission->statusId = $request->getParam('statusId', $submission->statusId);
-        $submission->isSpam = (bool)$request->getParam('isSpam', $submission->isSpam);
+        $submission->title = $request->getBodyParam('title') ?: $submission->title;
+        $submission->statusId = $request->getBodyParam('statusId', $submission->statusId);
+        $submission->isSpam = (bool)$request->getBodyParam('isSpam', $submission->isSpam);
         $submission->setScenario(Element::SCENARIO_LIVE);
 
         // Save the submission
-        if ($request->getParam('saveAction') === 'draft') {
+        if ($request->getBodyParam('saveAction') === 'draft') {
             $submission->setScenario(Element::SCENARIO_ESSENTIALS);
         }
 
@@ -472,7 +473,8 @@ class SubmissionsController extends Controller
 
         // If we're going back, and want to  navigate without saving
         if ($submitAction === 'back' && !$formieSettings->enableBackSubmission) {
-            $nextPage = $form->getPreviousPage(null, $submission, true);
+            // Ensure that we don't set the next page to `null` which would mean form completion
+            $nextPage = $form->getPreviousPage(null, $submission, true) ?? $form->getCurrentPage();
 
             // Update the current page to reflect the next page
             $form->setCurrentPage($nextPage);
@@ -504,11 +506,12 @@ class SubmissionsController extends Controller
             }
         }
 
-        // Determine the next page to navigate to
+        // Determine the next page to navigate to. Be sure to fallback to the current page, as `nextPage = null`
+        // signifies the end of the form.
         if (is_numeric($goToPageId)) {
-            $nextPage = ArrayHelper::firstWhere($form->getPages(), 'id', $goToPageId);
+            $nextPage = ArrayHelper::firstWhere($form->getPages(), 'id', $goToPageId) ?? $form->getCurrentPage();
         } else if ($submitAction === 'back') {
-            $nextPage = $form->getPreviousPage(null, $submission, true);
+            $nextPage = $form->getPreviousPage(null, $submission, true) ?? $form->getCurrentPage();
         } else if ($submitAction === 'save') {
             $nextPage = $form->getCurrentPage();
         } else {
@@ -689,7 +692,14 @@ class SubmissionsController extends Controller
         }
 
         if (!empty($nextPage)) {
-            // Refresh, there's still more pages to complete
+            // Refresh, there's still more pages to complete. Or check if we should "redirect" to a template-defined
+            // URL, which is set for every page (commonly the first one, once a submission is available)
+            if ($settings->pageRedirectUrl) {
+                $url = Formie::$plugin->getTemplates()->renderObjectTemplate($settings->pageRedirectUrl, $submission);
+
+                return $this->redirect($url);
+            }
+
             return $this->refresh();
         }
 
@@ -719,15 +729,15 @@ class SubmissionsController extends Controller
         $request = $this->request;
 
         // Ensure we validate some params here to prevent potential malicious-ness
-        $handle = $this->_getTypedParam('handle', 'string');
-        $pageId = $this->_getTypedParam('pageId', 'id');
-        $submissionId = $this->_getTypedParam('submissionId', 'id');
+        $handle = $this->_getTypedParam('handle', 'string', null, false);
+        $pageId = $this->_getTypedParam('pageId', 'id', null, false);
+        $submissionId = $this->_getTypedParam('submissionId', 'id', null, false);
 
         /* @var Form $form */
         $form = $this->_getForm($handle);
 
         if (!$form) {
-            throw new BadRequestHttpException("No form exists with the handle \"$handle\"");
+            throw new BadRequestHttpException("No form exists with the handle `$handle`.");
         }
 
         // Check if we're editing a submission
@@ -752,16 +762,20 @@ class SubmissionsController extends Controller
 
     public function actionClearSubmission(): Response
     {
-        $this->requirePostRequest();
         $request = $this->request;
 
-        $handle = $request->getRequiredBodyParam('handle');
+        // Ensure we validate some params here to prevent potential malicious-ness
+        $handle = $this->_getTypedParam('handle', 'string', null, false);
+        $redirect = $this->_getTypedParam('redirect', 'string', null, false);
+
+        // Ensure the redirect passed is validated, otherwise fallback to referer
+        $redirect = Craft::$app->getSecurity()->validateData($redirect) ?: $request->referrer;
 
         /* @var Form $form */
         $form = $this->_getForm($handle);
 
         if (!$form) {
-            throw new BadRequestHttpException("No form exists with the handle \"$handle\"");
+            throw new BadRequestHttpException("No form exists with the handle `$handle`.");
         }
 
         // Delete the currently saved page
@@ -770,13 +784,7 @@ class SubmissionsController extends Controller
         // Delete the incomplete submission we've been using
         $form->resetCurrentSubmission();
 
-        if ($request->getAcceptsJson()) {
-            return $this->asJson([
-                'success' => true,
-            ]);
-        }
-
-        return $this->redirectToPostedUrl();
+        return $this->redirect($redirect);
     }
 
     public function actionDeleteSubmission(): ?Response
@@ -830,6 +838,8 @@ class SubmissionsController extends Controller
 
         $submission = Submission::find()
             ->id($request->getParam('id'))
+            ->isIncomplete(null)
+            ->isSpam(null)
             ->one();
 
         $notifications = $submission->getForm()->getNotifications();
@@ -858,6 +868,8 @@ class SubmissionsController extends Controller
 
         $submission = Submission::find()
             ->id($request->getParam('submissionId'))
+            ->isIncomplete(null)
+            ->isSpam(null)
             ->one();
 
         if (!$notification) {
@@ -896,6 +908,8 @@ class SubmissionsController extends Controller
 
         $submission = Submission::find()
             ->id($request->getParam('submissionId'))
+            ->isIncomplete(null)
+            ->isSpam(null)
             ->one();
 
         if (!$submission) {
@@ -919,10 +933,8 @@ class SubmissionsController extends Controller
 
             $resolvedIntegration = $integration;
 
-            // Add additional useful info for the integration
-            // TODO: refactor this to allow integrations access to control this
-            $resolvedIntegration->referrer = $this->request->getReferrer();
-            $resolvedIntegration->ipAddress = $this->request->getUserIP();
+            // Allow integrations to add extra data before running
+            $resolvedIntegration->populateContext();
         }
 
         if (!$resolvedIntegration) {
@@ -933,9 +945,9 @@ class SubmissionsController extends Controller
             return $this->asFailure($error);
         }
 
-        $result = Formie::$plugin->getSubmissions()->sendIntegrationPayload($resolvedIntegration, $submission);
+        $response = Formie::$plugin->getSubmissions()->sendIntegrationPayload($resolvedIntegration, $submission);
 
-        if (!$result) {
+        if (($response instanceof IntegrationResponse) && !$response->success) {
             $message = Craft::t('formie', 'Integration failed to run.');
 
             $this->setFailFlash($message);
@@ -1009,7 +1021,7 @@ class SubmissionsController extends Controller
             $redirect = $form->getRedirectUrl();
         }
 
-        $redirectUrl = Craft::$app->getView()->renderObjectTemplate($redirect, $submission);
+        $redirectUrl = Formie::$plugin->getTemplates()->renderObjectTemplate($redirect, $submission);
 
         $params = array_merge([
             'success' => $success,
@@ -1106,9 +1118,10 @@ class SubmissionsController extends Controller
         $request = $this->request;
 
         // Ensure we validate some params here to prevent potential malicious-ness
+        $editingSubmission = $this->_getTypedParam('editingSubmission', 'boolean');
         $submissionId = $this->_getTypedParam('submissionId', 'id');
         $siteId = $this->_getTypedParam('siteId', 'id');
-        $userParam = $request->getParam('user');
+        $userParam = $request->getBodyParam('user');
 
         if ($submissionId) {
             // Allow fetching spammed submissions for multistep forms, where it has been flagged as spam
@@ -1145,12 +1158,17 @@ class SubmissionsController extends Controller
             }
 
             // Allow a `user` override (when editing a submission through the CP)
-            if ($request->getIsCpRequest() && $user = $userParam) {
-                $submission->userId = $user[0] ?? null;
+            if ($request->getIsCpRequest() && $userParam) {
+                $submission->userId = $userParam[0] ?? null;
             }
         }
 
         $this->_setTitle($submission, $form);
+
+        // If we're editing a submission, ensure we set our flag
+        if ($editingSubmission) {
+            $form->setSubmission($submission);
+        }
 
         return $submission;
     }
@@ -1177,11 +1195,7 @@ class SubmissionsController extends Controller
 
     private function _setTitle($submission, $form): void
     {
-        $submission->title = Variables::getParsedValue(
-            $form->settings->submissionTitleFormat,
-            $submission,
-            $form
-        );
+        $submission->title = Variables::getParsedValue($form->settings->submissionTitleFormat, $submission, $form);
 
         // Set the default title for the submission, so it can save correctly
         if (!$submission->title) {
@@ -1200,10 +1214,15 @@ class SubmissionsController extends Controller
      * @return mixed The parameter value.
      * @throws BadRequestHttpException if the request is not the valid type
      */
-    private function _getTypedParam(string $name, string $type, mixed $default = null): mixed
+    private function _getTypedParam(string $name, string $type, mixed $default = null, bool $bodyParam = true): mixed
     {
         $request = $this->request;
-        $value = $request->getParam($name);
+
+        if ($bodyParam) {
+            $value = $request->getBodyParam($name);
+        } else {
+            $value = $request->getParam($name);
+        }
 
         // Special case for `submitAction`, where we don't want just anything passed in to change behaviour
         if ($name === 'submitAction') {

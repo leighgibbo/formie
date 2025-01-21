@@ -650,6 +650,50 @@ $fields.forEach($field => {
 });
 ```
 
+### Multi-Line Text Fields
+When using the Rich Text setting for Multi-Line Text fields, you can access [Pell](https://github.com/jaredreich/pell) settings, and modify them through JavaScript.
+
+#### The `beforeInit` event
+The event that is triggered before the Pell editor is initialized.
+
+```js
+// Fetch all Multi-Line Text fields - specifically the textarea. Events are bound on the textarea element
+let $fields = document.querySelectorAll('[data-field-type="multi-line-text"] textarea');
+
+// For each field, bind on the `beforeInit` event
+$fields.forEach($field => {
+    $field.addEventListener('beforeInit', (e) => {
+        let richText = e.detail.richText;
+        let options = e.detail.options;
+
+        // Modify any Pell options
+        e.detail.options.classes = {
+            actionbar: 'pell-actionbar',
+            button: 'pell-button',
+            content: 'pell-content',
+            selected: 'pell-button-selected',
+        };
+    });
+});
+```
+
+The above example uses the `beforeInit` event to modify the config for Pell. There's event data in the event's `detail` attribute, which you can modify.
+
+#### The `afterInit` event
+The event that is triggered after the Pell editor is initialized.
+
+```js
+// Fetch all Multi-Line Text fields - specifically the textarea. Events are bound on the textarea element
+let $fields = document.querySelectorAll('[data-field-type="multi-line-text"] textarea');
+
+// For each field, bind on the `afterInit` event
+$fields.forEach($field => {
+    $field.addEventListener('afterInit', (e) => {
+        let richText = e.detail.richText;
+    });
+});
+```
+
 
 ### Phone Fields
 
@@ -813,6 +857,93 @@ $fields.forEach($field => {
         let tagField = e.detail.tagField;
         let tagify = e.detail.tagify;
         let options = e.detail.options;
+    });
+});
+```
+
+## JavaScript for Payment Fields
+
+### Stripe
+When using the Payment field with Stripe, you can access the [Card Options](https://stripe.com/docs/js/elements_object/create_element?type=card) settings, and modify them through JavaScript.
+
+#### The `beforeInit` event
+The event that is triggered before the Stripe card elements component is initialized.
+
+```js
+// Fetch all Payment fields (be sure to check if this is Stripe)
+let $fields = document.querySelectorAll('[data-field-type="payment"]');
+
+// For each field, bind on the `beforeInit` event
+$fields.forEach($field => {
+    $field.addEventListener('beforeInit', (e) => {
+        let stripeField = e.detail.stripe;
+        let options = e.detail.options;
+
+        // Modify any Stripe options
+        e.detail.options.locale = 'de';
+    });
+});
+```
+
+
+### PayPal
+When using the Payment field with PayPal, you can access the [Button Options](https://developer.paypal.com/sdk/js/reference/) settings, and modify them through JavaScript.
+
+#### The `beforeInit` event
+The event that is triggered before the PayPal Button component is initialized.
+
+```js
+// Fetch all Payment fields (be sure to check if this is PayPal)
+let $fields = document.querySelectorAll('[data-field-type="payment"]');
+
+// For each field, bind on the `beforeInit` event
+$fields.forEach($field => {
+    $field.addEventListener('beforeInit', (e) => {
+        let payPalField = e.detail.payPal;
+        let options = e.detail.options;
+
+        // Modify any PayPal options
+        e.detail.options.style.layout = 'vertical';
+    });
+});
+```
+
+#### The `modifyQueryParams` event
+The event that is triggered when constructing the URL to the PayPal SDK, where you can modify the query params for various features.
+
+```js
+// Fetch all Payment fields (be sure to check if this is PayPal)
+let $fields = document.querySelectorAll('[data-field-type="payment"]');
+
+// For each field, bind on the `beforeInit` event
+$fields.forEach($field => {
+    $field.addEventListener('modifyQueryParams', (e) => {
+        let payPalField = e.detail.payPal;
+        let params = e.detail.params;
+
+        // Modify any PayPal options
+        e.detail.params.push('disable-funding=paylater');
+    });
+});
+```
+
+#### The `onApprove` event
+The event that is triggered when PayPal has approved (but not processed) your transaction.
+
+```js
+// Fetch all Payment fields (be sure to check if this is PayPal)
+let $fields = document.querySelectorAll('[data-field-type="payment"]');
+
+// For each field, bind on the `onApprove` event
+$fields.forEach($field => {
+    $field.addEventListener('onApprove', (e) => {
+        let payPalField = e.detail.payPal;
+        let data = e.detail.data;
+        let actions = e.detail.actions;
+        let authorization = e.detail.authorization;
+
+        // Return false to prevent error/success messages showing
+        return false;
     });
 });
 ```

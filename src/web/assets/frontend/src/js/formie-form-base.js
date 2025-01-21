@@ -26,35 +26,43 @@ export class FormieFormBase {
         this.addEventListener(this.$form, 'submit', (e) => {
             e.preventDefault();
 
-            const beforeSubmitEvent = this.eventObject('onBeforeFormieSubmit', {
-                submitHandler: this,
-            });
+            this.initSubmit();
+        }, false);
+    }
 
-            if (!this.$form.dispatchEvent(beforeSubmitEvent)) {
+    initSubmit() {
+        const beforeSubmitEvent = this.eventObject('onBeforeFormieSubmit', {
+            submitHandler: this,
+        });
+
+        if (!this.$form.dispatchEvent(beforeSubmitEvent)) {
+            return;
+        }
+
+        this.processSubmit();
+    }
+
+    processSubmit(skip = []) {
+        // Add a little delay for UX
+        setTimeout(() => {
+            // Call the validation hooks
+            if (!this.validate() || !this.afterValidate()) {
                 return;
             }
 
-            // Add a little delay for UX
-            setTimeout(() => {
-                // Call the validation hooks
-                if (!this.validate() || !this.afterValidate()) {
-                    return;
-                }
+            // Trigger Captchas
+            if (!skip.includes('captcha') && !this.validateCaptchas()) {
+                return;
+            }
 
-                // Trigger Captchas
-                if (!this.validateCaptchas()) {
-                    return;
-                }
+            // Trigger Payment Integrations
+            if (!skip.includes('payment') && !this.validatePayment()) {
+                return;
+            }
 
-                // Trigger Payment Integrations
-                if (!this.validatePayment()) {
-                    return;
-                }
-
-                // Proceed with submitting the form, which raises other validation events
-                this.submitForm();
-            }, 300);
-        }, false);
+            // Proceed with submitting the form, which raises other validation events
+            this.submitForm();
+        }, 300);
     }
 
     validate() {
@@ -110,14 +118,31 @@ export class FormieFormBase {
     }
 
     formAfterSubmit(data = {}) {
+        // Add redirect behaviour for iframes to control the target
+        data.redirectTarget = data.redirectTarget || window;
+
         this.$form.dispatchEvent(new CustomEvent('onAfterFormieSubmit', {
+            bubbles: true,
+            detail: data,
+        }));
+
+        // Ensure that once completed, we re-fetch the captcha value, which will have expired
+        if (!data.nextPageId) {
+            // Use `this.config.Formie` just in case we're not loading thie script in the global window
+            // (i.e. when users import this script in their own).
+            this.config.Formie.refreshFormTokens(this);
+        }
+    }
+
+    formSubmitError(data = {}) {
+        this.$form.dispatchEvent(new CustomEvent('onFormieSubmitError', {
             bubbles: true,
             detail: data,
         }));
     }
 
-    formSubmitError(data = {}) {
-        this.$form.dispatchEvent(new CustomEvent('onFormieSubmitError', {
+    formDestroy(data = {}) {
+        this.$form.dispatchEvent(new CustomEvent('onFormieDestroy', {
             bubbles: true,
             detail: data,
         }));
@@ -168,16 +193,23 @@ export class FormieFormBase {
     }
 
     addEventListener(element, event, func) {
-        this.listeners[event] = { element, func };
+        // If the form is marked as destroyed, don't add any more event listeners.
+        // This can often happen with captchas or payment integrations which are done as they appear on page.
+        if (!this.destroyed) {
+            this.listeners[event] = { element, func };
+            const eventName = event.split('.')[0];
 
-        element.addEventListener(event.split('.')[0], this.listeners[event].func);
+            element.addEventListener(eventName, this.listeners[event].func);
+        }
     }
 
     removeEventListener(event) {
         const eventInfo = this.listeners[event] || {};
 
         if (eventInfo && eventInfo.element && eventInfo.func) {
-            eventInfo.element.removeEventListener(event.split('.')[0], eventInfo.func);
+            const eventName = event.split('.')[0];
+
+            eventInfo.element.removeEventListener(eventName, eventInfo.func);
             delete this.listeners[event];
         }
     }
@@ -190,9 +222,27 @@ export class FormieFormBase {
         });
     }
 
-    getClasses(key) {
-        const classes = this.settings.classes || {};
+    getThemeConfigAttributes(key) {
+        const attributes = this.settings.themeConfig || {};
 
-        return classes[key];
+        return attributes[key] || {};
+    }
+
+    getClasses(key) {
+        return this.getThemeConfigAttributes(key).class || [];
+    }
+
+    applyThemeConfig($element, key, applyClass = true) {
+        const attributes = this.getThemeConfigAttributes(key);
+
+        if (attributes) {
+            Object.entries(attributes).forEach(([attribute, value]) => {
+                if (attribute === 'class' && !applyClass) {
+                    return;
+                }
+
+                $element.setAttribute(attribute, value);
+            });
+        }
     }
 }

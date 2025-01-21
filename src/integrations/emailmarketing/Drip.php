@@ -68,7 +68,7 @@ class Drip extends EmailMarketing
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Drip lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -246,7 +246,9 @@ class Drip extends EmailMarketing
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::apiError($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $this->_client = Craft::createGuzzleClient([

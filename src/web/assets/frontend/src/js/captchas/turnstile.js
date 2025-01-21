@@ -1,12 +1,18 @@
+import { FormieCaptchaProvider } from './captcha-provider';
 import { turnstile } from './inc/turnstile';
 import { t, eventKey } from '../utils/utils';
 
-export class FormieTurnstile {
+export class FormieTurnstile extends FormieCaptchaProvider {
     constructor(settings = {}) {
+        super(settings);
+
         this.$form = settings.$form;
         this.form = this.$form.form;
         this.siteKey = settings.siteKey;
         this.loadingMethod = settings.loadingMethod;
+        this.theme = settings.theme;
+        this.size = settings.size;
+        this.appearance = settings.appearance;
         this.turnstileScriptId = 'FORMIE_TURNSTILE_SCRIPT';
 
         // Fetch and attach the script only once - this is in case there are multiple forms on the page.
@@ -91,28 +97,24 @@ export class FormieTurnstile {
             $token.remove();
         }
 
-        // Check if we actually need to re-render this, or just refresh it...
-        const currentTurnstileId = this.$placeholder.getAttribute('data-turnstile-id');
-
-        if (currentTurnstileId !== null) {
-            this.turnstileId = currentTurnstileId;
-
-            turnstile.reset(this.turnstileId);
-        }
+        // Clear the submit handler (as this has been re-rendered after a successful Ajax submission)
+        // as Turnstile will verify on-render and will auto-submit the form again. Because in `onVerify`
+        // we have a submit handler, the form will try and submit itself, which we don't want.
+        this.submitHandler = null;
 
         // Render the turnstile
-        turnstile.render(this.$placeholder, {
+        turnstile.render(this.createInput(), {
             sitekey: this.siteKey,
             callback: this.onVerify.bind(this),
             'expired-callback': this.onExpired.bind(this),
             'timeout-callback': this.onTimeout.bind(this),
             'error-callback': this.onError.bind(this),
             'close-callback': this.onClose.bind(this),
+            theme: this.theme,
+            size: this.size,
+            appearance: this.appearance,
         }, (id) => {
             this.turnstileId = id;
-
-            // // Update the placeholder with our ID, in case we need to re-render it
-            this.$placeholder.setAttribute('data-turnstile-id', id);
         });
     }
 

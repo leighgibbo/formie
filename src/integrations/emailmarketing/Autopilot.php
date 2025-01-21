@@ -42,7 +42,7 @@ class Autopilot extends EmailMarketing
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Autopilot lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -322,6 +322,7 @@ class Autopilot extends EmailMarketing
                 'handle' => $field['fieldType'] . '--' . str_replace(' ', '--', $field['name']),
                 'name' => $field['name'],
                 'type' => $this->_convertFieldType($field['fieldType']),
+                'sourceType' => $field['fieldType'],
             ]);
         }
 

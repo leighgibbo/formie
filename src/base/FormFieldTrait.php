@@ -5,10 +5,12 @@ use verbb\formie\Formie;
 use verbb\formie\elements\Form;
 use verbb\formie\elements\NestedFieldRow;
 use verbb\formie\elements\Submission;
+use verbb\formie\events\ModifyEmailFieldUniqueQueryEvent;
 use verbb\formie\events\ModifyFieldValueEvent;
 use verbb\formie\events\ModifyFieldEmailValueEvent;
 use verbb\formie\events\ModifyFieldIntegrationValueEvent;
 use verbb\formie\events\ModifyFieldHtmlTagEvent;
+use verbb\formie\events\ModifyFieldUniqueQueryEvent;
 use verbb\formie\fields\formfields;
 use verbb\formie\fields\formfields\BaseOptionsField;
 use verbb\formie\fields\formfields\Hidden;
@@ -17,19 +19,24 @@ use verbb\formie\helpers\Html;
 use verbb\formie\helpers\SchemaHelper;
 use verbb\formie\helpers\StringHelper;
 use verbb\formie\helpers\Variables;
+use verbb\formie\models\FieldLayoutPage;
 use verbb\formie\models\IntegrationField;
 use verbb\formie\models\Notification;
 use verbb\formie\models\HtmlTag;
 use verbb\formie\positions\AboveInput;
 use verbb\formie\positions\BelowInput;
+use verbb\formie\positions\Hidden as HiddenPosition;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\db\Query;
 use craft\gql\types\DateTime as DateTimeType;
 use craft\helpers\ArrayHelper;
 use craft\helpers\Json;
 use craft\helpers\Template;
 use craft\validators\HandleValidator;
+
+use yii\db\Schema;
 
 use GraphQL\Type\Definition\Type;
 
@@ -47,25 +54,28 @@ trait FormFieldTrait
     // Static Methods
     // =========================================================================
 
-    /**
-     * @inheritDoc
-     */
+    public static function className(): string
+    {
+        $classNameParts = explode('\\', static::class);
+
+        return array_pop($classNameParts);
+    }
+
+    public static function kebabClassName(): string
+    {
+        return StringHelper::toKebabCase(static::className());
+    }
+
     public static function getFrontEndInputTemplatePath(): string
     {
-        return 'fields/' . static::_getKebabName();
+        return 'fields/' . static::kebabClassName();
     }
 
-    /**
-     * @inheritDoc
-     */
     public static function getEmailTemplatePath(): string
     {
-        return 'fields/' . static::_getKebabName();
+        return 'fields/' . static::kebabClassName();
     }
 
-    /**
-     * @inheritDoc
-     */
     public static function getSvgIcon(): string
     {
         if (static::getSvgIconPath()) {
@@ -75,12 +85,14 @@ trait FormFieldTrait
         return '';
     }
 
-    /**
-     * @inheritDoc
-     */
     public static function getSvgIconPath(): string
     {
         return '';
+    }
+
+    public static function getRequiredPlugins(): array
+    {
+        return [];
     }
 
 
@@ -111,6 +123,8 @@ trait FormFieldTrait
     public bool $isNested = false;
 
     private ?Form $_form = null;
+    private ?FieldLayoutPage $_page = null;
+    private ?array $_row = null;
     private ?NestedFieldInterface $_container = null;
     private array $_themeConfig = [];
     private ?FormFieldInterface $_parentField = null;
@@ -151,6 +165,16 @@ trait FormFieldTrait
     public function getValue(ElementInterface $element): mixed
     {
         return $element->getFieldValue($this->handle);
+    }
+
+    public function getContentColumnType(): string
+    {
+        // Content encryption can make field content quite large
+        if ($this->enableContentEncryption) {
+            return Schema::TYPE_TEXT;
+        }
+        
+        return parent::getContentColumnType();
     }
 
     /**
@@ -256,10 +280,12 @@ trait FormFieldTrait
 
     public function getValueForIntegration(mixed $value, $integrationField, $integration, ?ElementInterface $element = null, $fieldKey = ''): mixed
     {
+        $rawValue = $value;
         $value = $this->defineValueForIntegration($value, $integrationField, $integration, $element, $fieldKey);
 
         $event = new ModifyFieldIntegrationValueEvent([
             'value' => $value,
+            'rawValue' => $rawValue,
             'field' => $this,
             'submission' => $element,
             'integrationField' => $integrationField,
@@ -401,6 +427,59 @@ trait FormFieldTrait
         }
     }
 
+    public function validateUniqueValue(ElementInterface $element): void
+    {
+        $value = $element->getFieldValue($this->handle);
+        $value = trim($value);
+
+        // Use a DB lookup for performance
+        $fieldHandle = $element->fieldColumnPrefix . $this->handle;
+        $contentTable = $element->contentTable;
+
+        if ($this->columnSuffix) {
+            $fieldHandle .= '_' . $this->columnSuffix;
+        }
+
+        $query = (new Query())
+            ->select($fieldHandle)
+            ->from(['c' => $contentTable])
+            ->where([$fieldHandle => $value, 'isIncomplete' => false, 'e.dateDeleted' => null])
+            ->leftJoin(['s' => '{{%formie_submissions}}'], "[[s.id]] = [[c.elementId]]")
+            ->leftJoin('{{%elements}} e', '[[e.id]] = [[s.id]]');
+
+        // Exclude _this_ element, if there is one
+        if ($element->id) {
+            $query->andWhere(['!=', 's.id', $element->id]);
+        }
+
+        // TODO: to remove at the next breakpoint
+        if ($this instanceof formfields\Email) {
+            Craft::$app->getDeprecator()->log(__METHOD__, 'The `ModifyEmailFieldUniqueQueryEvent` event has been deprecated. Use the `ModifyFieldUniqueQueryEvent` event instead.');
+
+            $event = new ModifyEmailFieldUniqueQueryEvent([
+                'query' => $query,
+                'field' => $this,
+            ]);
+        } else {
+            $event = new ModifyFieldUniqueQueryEvent([
+                'query' => $query,
+                'field' => $this,
+            ]);
+        }
+
+        // Fire a 'modifyFieldUniqueQuery' event
+        $this->trigger(self::EVENT_MODIFY_UNIQUE_QUERY, $event);
+
+        // Be sure to check only against completed submission content
+        $emailExists = $event->query->exists();
+
+        if ($emailExists) {
+            $element->addError($this->handle, Craft::t('formie', '“{name}” must be unique.', [
+                'name' => $this->name,
+            ]));
+        }
+    }
+
     /**
      * @return NestedFieldInterface|Form|null
      */
@@ -473,7 +552,7 @@ trait FormFieldTrait
     {
         // Return the `id` attribute for the field, including parent fields
         // `fui-contactForm-xpvgyvsp-singleName` or `fui-contactForm-xpvgyvsp-multiName-firstName`
-        $ids = [$form->getFormId(), ...$this->_getFullNamespace(), $this->handle, $extra];
+        $ids = [$form->getFormId(), ...$this->getFullNamespace(), $this->handle, $extra];
 
         return Html::getInputIdAttribute(array_filter($ids));
     }
@@ -482,7 +561,7 @@ trait FormFieldTrait
     {
         // Return the `data-id` attribute for the field, including parent fields
         // `contactForm-singleName` or `contactForm-multiName-firstName`
-        $ids = [$form->handle, ...$this->_getFullHandle(), $extra];
+        $ids = [$form->handle, ...$this->getFullHandle(), $extra];
 
         return implode('-', array_filter($ids));
     }
@@ -491,7 +570,7 @@ trait FormFieldTrait
     {
         // Return the `name` attribute for the field, including parent fields
         // `fields[singleName]` or `fields[multiName][firstName]`
-        $names = [...$this->_getFullNamespace(), $this->handle, $extra];
+        $names = [...$this->getFullNamespace(), $this->handle, $extra];
 
         return Html::getInputNameAttribute(array_filter($names));
     }
@@ -580,6 +659,7 @@ trait FormFieldTrait
         $defaults = [
             'labelPosition' => '',
             'instructionsPosition' => '',
+            'includeInEmail' => true,
         ];
 
         // Combine any class-specified defaults
@@ -657,6 +737,10 @@ trait FormFieldTrait
         ]);
 
         $this->trigger(static::EVENT_MODIFY_DEFAULT_VALUE, $event);
+
+        if (is_string($event->value)) {
+            $event->value = trim($event->value);
+        }
 
         return $event->value;
     }
@@ -780,18 +864,18 @@ trait FormFieldTrait
             return new HtmlTag('div', [
                 'class' => [
                     'fui-field',
-                    'fui-type-' . StringHelper::toKebabCase($this->displayName()),
+                    'fui-type-' . static::kebabClassName(),
                     'fui-label-' . $labelPosition,
                     'fui-subfield-label-' . $subfieldLabelPosition,
                     'fui-instructions-' . $instructionsPosition,
                     $errors ? 'fui-field-error fui-error' : null,
                     $this->required ? 'fui-field-required' : null,
                     $this->getIsHidden() ? 'fui-hidden' : null,
-                    $this->getParentField() ? 'fui-' . StringHelper::toKebabCase($this->getParentField()->displayName() . ' ' . $this->handle) : 'fui-page-field',
+                    $this->getParentField() ? 'fui-' . $this->getParentField()->kebabClassName() . '-' . StringHelper::toKebabCase($this->handle) : 'fui-page-field',
                 ],
                 'data' => [
                     'field-handle' => $this->handle,
-                    'field-type' => StringHelper::toKebabCase($this->displayName()),
+                    'field-type' => static::kebabClassName(),
                     'field-display-type' => $this->getDisplayType(),
                     'field-config' => $this->getConfigJson(),
                     'field-conditions' => $this->getConditionsJson($submission),
@@ -810,8 +894,15 @@ trait FormFieldTrait
                 return null;
             }
 
+            $labelPosition = $context['labelPosition'] ?? null;
+
             return new HtmlTag('label', [
-                'class' => 'fui-label',
+                'class' => [
+                    'fui-label',
+                ],
+                'data' => [
+                    'fui-sr-only' => $labelPosition instanceof HiddenPosition ? true : false,
+                ],
                 'for' => $id,
             ]);
         }
@@ -855,8 +946,11 @@ trait FormFieldTrait
         }
 
         if ($key === 'subFieldRow') {
+            $fields = $context['row'] ?? [];
+
             return new HtmlTag('div', [
                 'class' => 'fui-row',
+                'data-fui-field-count' => count($fields),
             ]);
         }
 
@@ -867,8 +961,11 @@ trait FormFieldTrait
         }
 
         if ($key === 'nestedFieldRow') {
+            $fields = $context['row']['fields'] ?? [];
+
             return new HtmlTag('div', [
                 'class' => 'fui-row',
+                'data-fui-field-count' => count($fields),
             ]);
         }
 
@@ -1121,11 +1218,30 @@ trait FormFieldTrait
         return null;
     }
 
-    public function getPage($submission)
+    public function getPage(submission $submission): ?FieldLayoutPage
     {
+        if ($this->_page) {
+            return $this->_page;
+        }
+
         $pages = $submission->getFieldPages();
 
-        return $pages[$this->handle] ?? null;
+        return $this->_page = ($pages[$this->handle] ?? null);
+    }
+
+    public function setPage(FieldLayoutPage $value): void
+    {
+        $this->_page = $value;
+    }
+
+    public function getRow(): ?array
+    {
+        return $this->_row;
+    }
+
+    public function setRow(array $value): void
+    {
+        $this->_row = $value;
     }
 
     /**
@@ -1350,6 +1466,40 @@ trait FormFieldTrait
         return $this->name;
     }
 
+    public function getFullHandle()
+    {
+        $handles = [];
+
+        // Get the namespace for each field, including parent fields
+        $field = $this;
+
+        while ($field) {
+            // Be sure to prepend parent fields, as we're going deepest outward
+            array_unshift($handles, $field->handle);
+
+            $field = $field->getParentField();
+        }
+
+        return $handles;
+    }
+
+    public function getFullNamespace()
+    {
+        $names = [];
+
+        // Get the namespace for each field, including parent fields
+        $field = $this;
+
+        while ($field) {
+            // Be sure to prepend parent fields, as we're going deepest outward
+            array_unshift($names, $field->getNamespace());
+
+            $field = $field->getParentField();
+        }
+
+        return $names;
+    }
+
 
     // Protected Methods
     // =========================================================================
@@ -1445,11 +1595,7 @@ trait FormFieldTrait
         return $this->defineValueAsString($value, $element);
     }
 
-
-    // Private Methods
-    // =========================================================================
-
-    private static function normalizeConfig(array &$config = [])
+    protected static function normalizeConfig(array &$config = [])
     {
         // Normalise the config from Formie v1 to v2. This is a bit more reliable than a migration
         // updating all field settings, as the presence of these properties in field classes that don't
@@ -1507,23 +1653,14 @@ trait FormFieldTrait
         }
     }
 
-    /**
-     * Returns the kebab-case name of the field class.
-     *
-     * @return string
-     */
-    private static function _getKebabName(): string
-    {
-        $classNameParts = explode('\\', static::class);
-        $end = array_pop($classNameParts);
 
-        return StringHelper::toKebabCase($end);
-    }
+    // Private Methods
+    // =========================================================================
 
     private static function _getReservedWords(): array
     {
         $reservedWords = [
-            ['form', 'field', 'submission'],
+            ['form', 'field', 'submission', 'status'],
         ];
 
         try {
@@ -1543,39 +1680,5 @@ trait FormFieldTrait
         }
 
         return array_values(array_unique(array_merge(...$reservedWords)));
-    }
-
-    private function _getFullHandle()
-    {
-        $handles = [];
-
-        // Get the namespace for each field, including parent fields
-        $field = $this;
-
-        while ($field) {
-            // Be sure to prepend parent fields, as we're going deepest outward
-            array_unshift($handles, $field->handle);
-
-            $field = $field->getParentField();
-        }
-
-        return $handles;
-    }
-
-    private function _getFullNamespace()
-    {
-        $names = [];
-
-        // Get the namespace for each field, including parent fields
-        $field = $this;
-
-        while ($field) {
-            // Be sure to prepend parent fields, as we're going deepest outward
-            array_unshift($names, $field->getNamespace());
-
-            $field = $field->getParentField();
-        }
-
-        return $names;
     }
 }

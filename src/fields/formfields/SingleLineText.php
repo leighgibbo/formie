@@ -10,10 +10,17 @@ use verbb\formie\models\HtmlTag;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\PreviewableFieldInterface;
+use craft\base\SortableFieldInterface;
 use craft\errors\InvalidFieldException;
 
-class SingleLineText extends FormField implements PreviewableFieldInterface
+class SingleLineText extends FormField implements PreviewableFieldInterface, SortableFieldInterface
 {
+    // Constants
+    // =========================================================================
+
+    public const EVENT_MODIFY_UNIQUE_QUERY = 'modifyUniqueQuery';
+
+
     // Static Methods
     // =========================================================================
 
@@ -42,6 +49,7 @@ class SingleLineText extends FormField implements PreviewableFieldInterface
     public ?string $minType = null;
     public ?int $max = null;
     public ?string $maxType = null;
+    public bool $uniqueValue = false;
 
 
     // Public Methods
@@ -63,6 +71,9 @@ class SingleLineText extends FormField implements PreviewableFieldInterface
             $config['max'] = $config['limitAmount'];
             unset($config['limitAmount']);
         }
+
+        // Config normalization
+        self::normalizeConfig($config);
 
         parent::__construct($config);
     }
@@ -118,6 +129,10 @@ class SingleLineText extends FormField implements PreviewableFieldInterface
             if ($this->maxType === 'words') {
                 $rules[] = 'validateMaxWords';
             }
+        }
+
+        if ($this->uniqueValue) {
+            $rules[] = 'validateUniqueValue';
         }
 
         return $rules;
@@ -261,7 +276,7 @@ class SingleLineText extends FormField implements PreviewableFieldInterface
     {
         if ($this->limit && $this->max) {
             return [
-                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/text-limit.js', true),
+                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/text-limit.js'),
                 'module' => 'FormieTextLimit',
             ];
         }
@@ -404,6 +419,12 @@ class SingleLineText extends FormField implements PreviewableFieldInterface
                 'fieldTypes' => [self::class],
             ]),
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
+            SchemaHelper::lightswitchField([
+                'label' => Craft::t('formie', 'Unique Value'),
+                'help' => Craft::t('formie', 'Whether to limit user input to unique values only. This will require that a value entered in this field does not already exist in a submission for this field and form.'),
+                'name' => 'uniqueValue',
+            ]),
         ];
     }
 

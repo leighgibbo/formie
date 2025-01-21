@@ -7,6 +7,7 @@ use verbb\formie\base\Integration;
 use verbb\formie\base\IntegrationInterface;
 use verbb\formie\elements\Form;
 use verbb\formie\events\IntegrationEvent;
+use verbb\formie\events\ModifyFormIntegrationEvent;
 use verbb\formie\events\ModifyFormIntegrationsEvent;
 use verbb\formie\events\RegisterIntegrationsEvent;
 use verbb\formie\integrations\addressproviders;
@@ -49,6 +50,7 @@ class Integrations extends Component
 
     public const EVENT_REGISTER_INTEGRATIONS = 'registerFormieIntegrations';
     public const EVENT_MODIFY_FORM_INTEGRATIONS = 'modifyFormIntegrations';
+    public const EVENT_MODIFY_FORM_INTEGRATION = 'modifyFormIntegration';
     public const EVENT_BEFORE_SAVE_INTEGRATION = 'beforeSaveIntegration';
     public const EVENT_AFTER_SAVE_INTEGRATION = 'afterSaveIntegration';
     public const EVENT_BEFORE_DELETE_INTEGRATION = 'beforeDeleteIntegration';
@@ -110,6 +112,7 @@ class Integrations extends Component
             emailmarketing\Autopilot::class,
             emailmarketing\AWeber::class,
             emailmarketing\Benchmark::class,
+            emailmarketing\Brevo::class,
             emailmarketing\CampaignMonitor::class,
             emailmarketing\ConstantContact::class,
             emailmarketing\ConvertKit::class,
@@ -117,7 +120,9 @@ class Integrations extends Component
             emailmarketing\EmailOctopus::class,
             emailmarketing\GetResponse::class,
             emailmarketing\IContact::class,
+            emailmarketing\IterableIntegration::class,
             emailmarketing\Klaviyo::class,
+            emailmarketing\KlaviyoLegacy::class,
             emailmarketing\Mailchimp::class,
             emailmarketing\Mailjet::class,
             emailmarketing\MailerLite::class,
@@ -146,7 +151,9 @@ class Integrations extends Component
             crm\HubSpotLegacy::class,
             crm\Infusionsoft::class,
             crm\Insightly::class,
+            crm\IterableIntegration::class,
             crm\Klaviyo::class,
+            crm\KlaviyoLegacy::class,
             crm\Maximizer::class,
             crm\Mercury::class,
             // crm\MethodCrm::class,
@@ -611,13 +618,25 @@ class Integrations extends Component
 
         foreach ($this->getAllCaptchas() as $key => $captcha) {
             if ($captcha->getEnabled() && $captcha->hasFormSettings()) {
-                $grouped[$captcha->typeName()][] = $captcha;
+                // Fire a 'modifyFormIntegration' event
+                $event = new ModifyFormIntegrationEvent([
+                    'integration' => $captcha,
+                ]);
+                $this->trigger(self::EVENT_MODIFY_FORM_INTEGRATION, $event);
+
+                $grouped[$captcha->typeName()][] = $event->integration;
             }
         }
 
         foreach ($this->getAllIntegrations() as $key => $integration) {
             if ($integration->getEnabled() && $integration->hasFormSettings()) {
-                $grouped[$integration->typeName()][] = $integration;
+                // Fire a 'modifyFormIntegration' event
+                $event = new ModifyFormIntegrationEvent([
+                    'integration' => $integration,
+                ]);
+                $this->trigger(self::EVENT_MODIFY_FORM_INTEGRATION, $event);
+
+                $grouped[$integration->typeName()][] = $event->integration;
             }
         }
 
@@ -639,6 +658,16 @@ class Integrations extends Component
         // Use all integrations + captchas
         $integrations = array_merge($this->getAllIntegrations(), $this->getAllCaptchas());
 
+        foreach ($integrations as $key => $integration) {
+            // Fire a 'modifyFormIntegration' event
+            $event = new ModifyFormIntegrationEvent([
+                'integration' => $integration,
+            ]);
+            $this->trigger(self::EVENT_MODIFY_FORM_INTEGRATION, $event);
+
+            $integrations[$key] = $event->integration;
+        }
+
         // Find all the form-enabled integrations
         $formIntegrationSettings = $form->settings->integrations ?? [];
         $enabledFormSettings = ArrayHelper::where($formIntegrationSettings, 'enabled', true);
@@ -656,7 +685,9 @@ class Integrations extends Component
 
         // Fire a 'modifyFormIntegrations' event
         $event = new ModifyFormIntegrationsEvent([
+            'allIntegrations' => $integrations,
             'integrations' => $enabledIntegrations,
+            'form' => $form,
         ]);
         $this->trigger(self::EVENT_MODIFY_FORM_INTEGRATIONS, $event);
 

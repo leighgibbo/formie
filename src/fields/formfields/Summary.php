@@ -41,6 +41,12 @@ class Summary extends FormField
     }
 
 
+    // Properties
+    // =========================================================================
+
+    public ?string $description = 'Your submission is being prepared. Please review below before proceeding.';
+
+
     // Public Methods
     // =========================================================================
 
@@ -90,7 +96,7 @@ class Summary extends FormField
     public function getFrontEndJsModules(): ?array
     {
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/summary.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/summary.js'),
             'module' => 'FormieSummary',
             'settings' => [
                 'fieldId' => $this->id,
@@ -104,12 +110,21 @@ class Summary extends FormField
     public function afterCreateField(array $data): void
     {
         $this->name = StringHelper::appendUniqueIdentifier(Craft::t('formie', 'Summary '));
-        $this->handle = StringHelper::appendUniqueIdentifier(Craft::t('formie', 'summaryHandle'));
+        $this->handle = StringHelper::appendUniqueIdentifier('summaryHandle');
     }
 
-    /**
-     * @inheritDoc
-     */
+    public function defineGeneralSchema(): array
+    {
+        return [
+            SchemaHelper::textField([
+                'label' => Craft::t('formie', 'Description'),
+                'help' => Craft::t('formie', 'The description text shown at the top of the field.'),
+                'name' => 'description',
+            ]),
+            SchemaHelper::includeInEmailField(),
+        ];
+    }
+
     public function defineAdvancedSchema(): array
     {
         return [
@@ -143,7 +158,7 @@ class Summary extends FormField
         if ($key === 'fieldSummaryHeading') {
             return new HtmlTag('h3', [
                 'class' => 'fui-heading-h3',
-                'text' => Craft::t('formie', 'Your submission is being prepared. Please review below before proceeding.'),
+                'text' => Craft::t('formie', $this->description),
             ]);
         }
 

@@ -11,6 +11,7 @@ use verbb\formie\positions\Hidden as HiddenPosition;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\PreviewableFieldInterface;
+use craft\base\SortableFieldInterface;
 use craft\helpers\Template;
 
 use yii\db\Schema;
@@ -19,7 +20,7 @@ use GraphQL\Type\Definition\Type;
 
 use Twig\Markup;
 
-class Agree extends FormField implements PreviewableFieldInterface
+class Agree extends FormField implements PreviewableFieldInterface, SortableFieldInterface
 {
     // Static Methods
     // =========================================================================
@@ -64,6 +65,9 @@ class Agree extends FormField implements PreviewableFieldInterface
         if (array_key_exists('descriptionHtml', $config)) {
             unset($config['descriptionHtml']);
         }
+
+        // Config normalization
+        self::normalizeConfig($config);
 
         parent::__construct($config);
     }
@@ -243,6 +247,7 @@ class Agree extends FormField implements PreviewableFieldInterface
                 'if' => '$get(required).value',
             ]),
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
         ];
     }
 
@@ -252,6 +257,7 @@ class Agree extends FormField implements PreviewableFieldInterface
     public function defineAppearanceSchema(): array
     {
         return [
+            SchemaHelper::visibility(),
             SchemaHelper::labelPosition($this),
             SchemaHelper::instructions(),
             SchemaHelper::instructionsPosition($this),

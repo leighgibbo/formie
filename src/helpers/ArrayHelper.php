@@ -20,7 +20,7 @@ class ArrayHelper extends CraftArrayHelper
      * @param bool $trim_all trim ALL whitespace from string
      * @return  string  imploded array
      */
-    public static function recursiveImplode(string $glue = ',', array $array, bool $include_keys = false, bool $trim_all = false): string
+    public static function recursiveImplode(array $array, string $glue = ',', bool $include_keys = false, bool $trim_all = false): string
     {
         $glued_string = '';
 
@@ -188,6 +188,35 @@ class ArrayHelper extends CraftArrayHelper
         }
 
         return $values;
+    }
+    public static function filterNullFalseValues($values)
+    {
+        foreach ($values as $key => $value) {
+            if (is_array($value)) {
+                $values[$key] = self::filterEmptyValues($values[$key]);
+            }
+
+            if ($values[$key] === null || $values[$key] === false) {
+                unset($values[$key]);
+            }
+        }
+
+        return $values;
+    }
+
+    public static function arrayFilterRecursive(array $array)
+    {
+        if (!is_array($array)) {
+            return $array;
+        }
+
+        foreach ($array as $key => $item) {
+            if (is_array($item)) {
+                $array[$key] = self::arrayFilterRecursive($item);
+            }
+        }
+
+        return array_filter($array);
     }
 
 }

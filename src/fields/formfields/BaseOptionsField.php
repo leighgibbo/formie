@@ -59,6 +59,23 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
     // Public Methods
     // =========================================================================
 
+    public function __construct($config = [])
+    {
+        // Normalize values when changing from optgroup
+        if (array_key_exists('options', $config) && is_array($config['options'])) {
+            foreach ($config['options'] as $key => $option) {
+                if (!isset($option['optgroup'])) {
+                    $config['options'][$key]['value'] = $option['value'] ?? '';
+                }
+            }
+        }
+
+        // Config normalization
+        self::normalizeConfig($config);
+
+        parent::__construct($config);
+    }
+
     /**
      * @inheritDoc
      */
@@ -83,8 +100,15 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
         if (Formie::$plugin->getSettings()->enableLargeFieldStorage) {
             return Schema::TYPE_TEXT;
         }
+
+        // Content encryption can make field content quite large
+        if ($this->enableContentEncryption) {
+            return Schema::TYPE_TEXT;
+        }
         
-        return parent::getContentColumnType();
+        // Don't fallback on the Craft default, as that can potentially set the field to CHAR(1) if no options
+        // are set, and people want to dynamically populate the options in Twig.
+        return Schema::TYPE_STRING;
     }
 
     public function getSavedFieldConfig(): array
@@ -131,7 +155,7 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
 
             foreach ($this->options() as $option) {
                 if (!empty($option['isDefault'])) {
-                    $value[] = $option['value'];
+                    $value[] = $option['value'] ?? '';
                 }
             }
 
@@ -146,8 +170,8 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
 
             foreach ($this->options() as $option) {
                 if (!isset($option['optgroup'])) {
-                    $optionValues[] = (string)$option['value'];
-                    $optionLabels[] = (string)$option['label'];
+                    $optionValues[] = (string)($option['value'] ?? '');
+                    $optionLabels[] = (string)($option['label'] ?? '');
                 }
             }
 
@@ -201,8 +225,8 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
                 continue;
             }
 
-            $label = (string)$option['label'];
-            $value = (string)$option['value'];
+            $label = (string)($option['label'] ?? '');
+            $value = (string)($option['value'] ?? '');
 
             if (isset($labels[$optgroup][$label])) {
                 $option['hasDuplicateLabels'] = true;
@@ -325,6 +349,50 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
         return $this->traitSetPrePopulatedValue($value);
     }
 
+    protected function defaultValue(): array|string|null
+    {
+        if ($this->multi) {
+            $defaultValues = [];
+
+            foreach ($this->options() as $option) {
+                if (!empty($option['isDefault'])) {
+                    $defaultValues[] = $option['value'];
+                }
+            }
+
+            return $defaultValues;
+        }
+
+        foreach ($this->options() as $option) {
+            if (!empty($option['isDefault'])) {
+                return $option['value'];
+            }
+        }
+
+        return null;
+    }
+
+    protected function getFieldInputOptionValue(array $context = [])
+    {
+        // Returns the string to represent the ID for a selected option for the `fieldInput` theme config property
+        // A little more involved due to needing to append the index of the option as just using  `StringHelper::toKebabCase()`
+        // will strip out special-characters (e.g. `Option+` is `option`)
+        $options = $context['fieldOptions'] ?? [];
+        $option = $context['option'] ?? null;
+
+        // Find the index first
+        $optionIndex = array_search($option, $options);
+
+        // Append it to the value picked, and ensure it's cleaned up
+        $optionValue = $context['option']['value'] ?? '';
+
+        if ($optionValue && $optionIndex !== false) {
+            $optionValue .= '-' . $optionIndex;
+        }
+
+        return StringHelper::toKebabCase($optionValue);
+    }
+
 
     // Private Methods
     // =========================================================================
@@ -340,7 +408,7 @@ abstract class BaseOptionsField extends CraftBaseOptionsField
 
             // Ensure that we always cast the value as a string, to handle integers throwing compare error checks in Twig
             if (isset($option['value'])) {
-                $option['value'] = (string)$option['value'];
+                $option['value'] = trim((string)$option['value']);
             }
         }
     }

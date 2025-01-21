@@ -43,7 +43,7 @@ class Mailchimp extends EmailMarketing
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Mailchimp lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -105,26 +105,26 @@ class Mailchimp extends EmailMarketing
                     $response = $this->request('GET', 'lists/' . $list['id'] . '/interest-categories/' . $category['id'] . '/interests');
                     $interests = $response['interests'] ?? [];
 
-                    $opts = [];
-
                     foreach ($interests as $interest) {
-                        $opts[] = [
-                            'label' => $interest['name'],
+                        $options[] = [
+                            'label' => Craft::t('formie', '{title} - {name}', ['title' => $category['title'], 'name' => $interest['name']]),
                             'value' => $interest['id'],
                         ];
                     }
-
-                    $options = [
-                        'label' => Craft::t('formie', 'Category - {title}', ['title' => $category['title']]),
-                        'options' => $opts,
-                    ];
                 }
 
-                $listFields[] = new IntegrationField([
-                    'handle' => 'interestCategories',
-                    'name' => Craft::t('formie', 'Interest Categories'),
-                    'options' => $options,
-                ]);
+                if ($options) {
+                    $options = [
+                        'label' => Craft::t('formie', 'Interest Categories'),
+                        'options' => $options,
+                    ];
+
+                    $listFields[] = new IntegrationField([
+                        'handle' => 'interestCategories',
+                        'name' => Craft::t('formie', 'Interest Categories'),
+                        'options' => $options,
+                    ]);
+                }
 
                 // Fetch marketing permissions
                 $response = $this->request('GET', 'lists/' . $list['id'] . '/members', [
@@ -306,18 +306,19 @@ class Mailchimp extends EmailMarketing
         $customFields = [];
 
         // Don't use all fields, at least for the moment...
+        // https://mailchimp.com/developer/marketing/docs/merge-fields/
         $supportedFields = [
             'text',
             'number',
-            // 'address',
-            'phone',
-            'date',
-            'url',
-            // 'imageurl',
             'radio',
             'dropdown',
+            'date',
             // 'birthday',
+            // 'address',
             'zip',
+            'phone',
+            'url',
+            // 'imageurl',
         ];
 
         foreach ($fields as $key => $field) {
@@ -335,6 +336,7 @@ class Mailchimp extends EmailMarketing
                 'handle' => $field['tag'],
                 'name' => $field['name'],
                 'type' => $this->_convertFieldType($field['type']),
+                'sourceType' => $field['type'],
                 'required' => $field['required'],
             ]);
         }

@@ -13,6 +13,7 @@ use verbb\formie\events\SubmissionEvent;
 use verbb\formie\events\SubmissionSpamCheckEvent;
 use verbb\formie\events\TriggerIntegrationEvent;
 use verbb\formie\fields\formfields;
+use verbb\formie\helpers\StringHelper;
 use verbb\formie\helpers\Variables;
 use verbb\formie\jobs\SendNotification;
 use verbb\formie\jobs\TriggerIntegration;
@@ -143,7 +144,7 @@ class Submissions extends Component
         }
 
         // Trigger any payment integrations - but note these can fail
-        if (!$this->processPayments($submission)) {
+        if ($success && !$this->processPayments($submission)) {
             $success = false;
         }
 
@@ -243,10 +244,8 @@ class Submissions extends Component
                 continue;
             }
 
-            // Add additional useful info for the integration
-            // TODO: refactor this to allow integrations access to control this
-            $integration->referrer = Craft::$app->getRequest()->getReferrer();
-            $integration->ipAddress = Craft::$app->getRequest()->getUserIP();
+            // Allow integrations to add extra data before running
+            $integration->populateContext();
 
             if ($settings->useQueueForIntegrations) {
                 Queue::push(new TriggerIntegration([
@@ -290,7 +289,10 @@ class Submissions extends Component
      */
     public function processPayments(Submission $submission): bool
     {
-        foreach ($submission->getFieldLayout()->getCustomFields() as $field) {
+        // Check for fields within Group/Repeaters
+        $fields = Formie::$plugin->getFields()->getFieldsForForm($submission->getForm());
+
+        foreach ($fields as $field) {
             if ($field instanceof formfields\Payment) {
                 // No need to proceed further if field is conditionally hidden
                 if ($field->isConditionallyHidden($submission)) {
@@ -647,7 +649,9 @@ class Submissions extends Component
 
         // Set some submission attributes as well
         $submission->id = '1234';
+        $submission->uid = StringHelper::UUID();
         $submission->dateCreated = new DateTime();
+        $submission->setUser(User::find()->one());
     }
 
 
@@ -668,7 +672,13 @@ class Submissions extends Component
                 case formfields\Tags::class:
                 case formfields\Users::class:
                 case formfields\Variants::class:
-                    $query = $field->getElementsQuery()->orderBy('RAND()');
+                    $query = $field->getElementsQuery();
+
+                    if (Craft::$app->getDb()->getIsMysql()) {
+                        $query->orderBy('RAND()');
+                    } else {
+                        $query->orderBy('RANDOM()');
+                    }
 
                     // Check if we should limit to 1 if a (single) dropdown or radio
                     if ($field->displayType === 'radio' || ($field->displayType === 'dropdown' && !$field->multiple)) {
@@ -738,6 +748,7 @@ class Submissions extends Component
                 case formfields\Name::class:
                     if ($field->useMultipleFields) {
                         $fieldContent[$field->handle] = new Name([
+                            'isMultiple' => true,
                             'prefix' => $faker->title,
                             'firstName' => $faker->firstName,
                             'middleName' => $faker->firstName,
@@ -767,6 +778,7 @@ class Submissions extends Component
                         $fieldContent[$field->handle] = new \verbb\formie\models\Phone([
                             'number' => $number,
                             'country' => $phoneUtil->getRegionCodeForNumber($numberProto),
+                            'hasCountryCode' => true,
                         ]);
                     } else {
                         $fieldContent[$field->handle] = $faker->phoneNumber;
@@ -811,7 +823,7 @@ class Submissions extends Component
             ->all();
 
         // Can the user edit _every_ submission?
-        if ($currentUser->can('formie-viewSubmissions')) {
+        if ($currentUser->can('formie-editSubmissions')) {
             $editableIds = ArrayHelper::getColumn($formInfo, 'id');
         } else {
             // Find all UIDs the user has permission to

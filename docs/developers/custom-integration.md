@@ -2,10 +2,16 @@
 You can add your own custom integrations to be compatible with Formie by using the provided events.
 
 ```php
-use modules\ExampleCaptcha;
-use modules\ExampleAddressProvider;
-use modules\ExampleElement;
+namespace modules\sitemodule;
 
+use modules\sitemodule\ExampleAddressProvider;
+use modules\sitemodule\ExampleCaptcha;
+use modules\sitemodule\ExampleCrm;
+use modules\sitemodule\ExampleElement;
+use modules\sitemodule\ExampleEmailMarketing;
+use modules\sitemodule\ExampleMiscellaneous;
+use modules\sitemodule\ExamplePayment;
+use modules\sitemodule\ExampleWebhook;
 use verbb\formie\events\RegisterIntegrationsEvent;
 use verbb\formie\services\Integrations;
 use yii\base\Event;
@@ -16,8 +22,9 @@ Event::on(Integrations::class, Integrations::EVENT_REGISTER_INTEGRATIONS, functi
     $event->elements[] = ExampleElement::class;
     $event->emailMarketing[] = ExampleEmailMarketing::class;
     $event->crm[] = ExampleCrm::class;
-    $event->webhooks[] = ExampleWebhooks::class;
+    $event->webhooks[] = ExampleWebhook::class;
     $event->miscellaneous[] = ExampleMiscellaneous::class;
+    $event->payments[] = ExamplePayment::class;
     // ...
 });
 ```
@@ -48,7 +55,7 @@ Method | Description
 
 ```php
 <?php
-namespace modules;
+namespace modules\sitemodule;
 
 use verbb\formie\base\Captcha;
 use verbb\formie\elements\Form;
@@ -77,9 +84,9 @@ class ExampleCaptcha extends Captcha
 
     public function getSettingsHtml(): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+
+        return Craft::$app->getView()->renderTemplate('path/to/settings', $variables);
     }
 
     public function getFrontEndHtml(Form $form, $page = null): string
@@ -130,7 +137,7 @@ Method | Description
 
 ```php
 <?php
-namespace modules;
+namespace modules\sitemodule;
 
 use verbb\formie\base\AddressProvider;
 use verbb\formie\elements\Form;
@@ -157,9 +164,9 @@ class ExampleAddressProvider extends AddressProvider
 
     public function getSettingsHtml(): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+
+        return Craft::$app->getView()->renderTemplate('path/to/settings', $variables);
     }
 
     public function getFrontEndHtml($field, $options): string
@@ -200,7 +207,7 @@ Method | Description
 
 ```php
 <?php
-namespace modules;
+namespace modules\sitemodule;
 
 use verbb\formie\base\Element;
 use verbb\formie\elements\Form;
@@ -229,17 +236,16 @@ class ExampleElement extends Element
 
     public function getSettingsHtml(): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+
+        return Craft::$app->getView()->renderTemplate('path/to/settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+
+        return Craft::$app->getView()->renderTemplate('path/to/form-settings', $variables);
     }
 
     public function fetchFormSettings()
@@ -328,7 +334,7 @@ Method | Description
 
 ```php
 <?php
-namespace modules;
+namespace modules\sitemodule;
 
 use verbb\formie\base\EmailMarketing;
 use verbb\formie\elements\Form;
@@ -358,17 +364,16 @@ class ExampleEmailMarketing extends EmailMarketing
 
     public function getSettingsHtml(): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+
+        return Craft::$app->getView()->renderTemplate('path/to/settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+
+        return Craft::$app->getView()->renderTemplate('path/to/form-settings', $variables);
     }
 
     public function fetchFormSettings()
@@ -457,7 +462,7 @@ Method | Description
 
 ```php
 <?php
-namespace modules;
+namespace modules\sitemodule;
 
 use verbb\formie\base\Crm;
 use verbb\formie\elements\Form;
@@ -490,17 +495,16 @@ class ExampleCrm extends Crm
 
     public function getSettingsHtml(): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+
+        return Craft::$app->getView()->renderTemplate('path/to/settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+
+        return Craft::$app->getView()->renderTemplate('path/to/form-settings', $variables);
     }
 
     public function fetchFormSettings()
@@ -601,7 +605,7 @@ Method | Description
 
 ```php
 <?php
-namespace modules;
+namespace modules\sitemodule;
 
 use verbb\formie\base\Webhook;
 use verbb\formie\elements\Form;
@@ -632,17 +636,16 @@ class ExampleWebhook extends Webhook
 
     public function getSettingsHtml(): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+
+        return Craft::$app->getView()->renderTemplate('path/to/settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('path/to/settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+
+        return Craft::$app->getView()->renderTemplate('path/to/form-settings', $variables);
     }
 
     public function fetchFormSettings()
