@@ -24,11 +24,14 @@
 
                 <tbody>
                     {% for field in fields %}
+                        {% set html = null %}
                         {% set fieldValue = (row ? row.getFieldValue(field.handle) : field.normalizeValue(null)) %}
 
-                        {% set html = field.getEmailHtml(submission, notification, fieldValue, {
-                            hideName: true,
-                        }) %}
+                        {% if field.includeInEmail and not field.isConditionallyHidden(submission) %}
+                            {% set html = field.getEmailHtml(submission, notification, fieldValue, {
+                                hideName: true,
+                            }) %}
+                        {% endif %}
 
                         {% if html %}
                             <tr>
