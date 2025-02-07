@@ -40,18 +40,6 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
-        // Drop all form content tables
-        if ($this->db->tableExists('{{%formie_forms}}')) {
-            foreach (Form::find()->trashed(null)->all() as $form) {
-                /* @var Form $form */
-                if ($this->db->tableExists($form->fieldContentTable)) {
-                    MigrationHelper::dropAllForeignKeysOnTable($form->fieldContentTable, $this);
-                }
-
-                $this->dropTableIfExists($form->fieldContentTable);
-            }
-        }
-
         $this->dropProjectConfig();
         $this->dropForeignKeys();
         $this->removeTables();
@@ -569,6 +557,18 @@ class Install extends Migration
 
         // Delete NestedFieldRow Elements
         $this->delete('{{%elements}}', ['type' => NestedFieldRow::class]);
+
+        // Drop all form content tables
+        if ($this->db->tableExists('{{%formie_forms}}')) {
+            foreach (Form::find()->trashed(null)->all() as $form) {
+                /* @var Form $form */
+                if ($this->db->tableExists($form->fieldContentTable)) {
+                    MigrationHelper::dropAllForeignKeysOnTable($form->fieldContentTable, $this);
+                }
+
+                $this->dropTableIfExists($form->fieldContentTable);
+            }
+        }
     }
 
     public function dropProjectConfig(): void
