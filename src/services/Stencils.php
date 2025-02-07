@@ -205,7 +205,7 @@ class Stencils extends Component
         $data = $event->newValue;
 
         // Protect against firing too early before Formie has installed
-        if (!Craft::$app->getDb()->tableExists(Table::FORMIE_STENCILS)) {
+        if (!Craft::$app->getDb()->tableExists('{{%formie_stencils}}')) {
             return;
         }
 
@@ -336,7 +336,7 @@ class Stencils extends Component
         $stencilUid = $event->tokenMatches[0];
 
         // Protect against firing too early before Formie has installed
-        if (!Craft::$app->getDb()->tableExists(Table::FORMIE_STENCILS)) {
+        if (!Craft::$app->getDb()->tableExists('{{%formie_stencils}}')) {
             return;
         }
 
