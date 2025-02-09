@@ -343,7 +343,6 @@ return [
   'Call' => 'Anruf',
   'Cambodia' => 'Kambodscha',
   'Cameroon' => 'Kamerun',
-  'Campaign' => 'Kampagne',
   'Campaign ID' => 'Kampagnen-ID',
   'Campaign IDs' => 'Kampagnen-IDs',
   'Campaign Monitor' => 'Campaign Monitor',

@@ -2,7 +2,7 @@
     "name": "simple-team/formie",
     "description": "The most user-friendly forms plugin for Craft.",
     "type": "craft-plugin",
-    "version": "2.1.39",
+    "version": "2.1.41",
     "keywords": [
         "craft",
         "cms",
