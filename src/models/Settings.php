@@ -7,6 +7,7 @@ use verbb\formie\positions\AboveInput;
 
 use Craft;
 use craft\base\Model;
+use craft\helpers\App;
 use craft\helpers\DateTimeHelper;
 
 use yii\validators\EmailValidator;
@@ -55,6 +56,7 @@ class Settings extends Model
     public bool $useQueueForNotifications = true;
     public bool $useQueueForIntegrations = true;
     public ?int $queuePriority = null;
+    public bool $setOnlyCurrentPagePayload = false;
 
     // Sent Notifications
     public bool $sentNotifications = true;
@@ -82,6 +84,10 @@ class Settings extends Model
 
     // Captcha settings are stored in Project Config, but otherwise private
     public array $captchas = [];
+
+    // Other
+    // TODO: Remove in Formie 3.
+    public bool $useEmailTemplateForFieldVariables = false;
 
 
     // Public Methods
@@ -160,6 +166,15 @@ class Settings extends Model
         }
 
         return false;
+    }
+
+    public function getSecurityKey(): string
+    {
+        if ($securityKey = App::env('FORMIE_SECURITY_KEY')) {
+            return $securityKey;
+        }
+
+        return Craft::$app->getConfig()->getGeneral()->securityKey;
     }
 
     /**

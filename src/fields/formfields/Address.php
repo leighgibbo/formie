@@ -13,8 +13,9 @@ use verbb\formie\gql\types\generators\FieldAttributeGenerator;
 use verbb\formie\gql\types\input\AddressInputType;
 use verbb\formie\helpers\SchemaHelper;
 use verbb\formie\models\Address as AddressModel;
-use verbb\formie\positions\AboveInput;
 use verbb\formie\models\HtmlTag;
+use verbb\formie\positions\AboveInput;
+use verbb\formie\positions\Hidden as HiddenPosition;
 
 use Craft;
 use craft\base\ElementInterface;
@@ -76,6 +77,7 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
         $repo = new CountryRepository($locale);
 
         $countries = [];
+        
         foreach ($repo->getList() as $value => $label) {
             $countries[] = compact('value', 'label');
         }
@@ -168,6 +170,8 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
     public bool $countryRequired = false;
     public ?string $countryErrorMessage = null;
     public bool $countryHidden = false;
+    public string $countryOptionLabel = 'full';
+    public string $countryOptionValue = 'short';
 
 
     // Public Methods
@@ -182,6 +186,9 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
         if (array_key_exists('enableAutocomplete', $config)) {
             unset($config['enableAutocomplete']);
         }
+
+        // Config normalization
+        self::normalizeConfig($config);
 
         parent::__construct($config);
     }
@@ -292,6 +299,35 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
 
             'instructionsPosition' => AboveInput::class,
         ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getElementValidationRules(): array
+    {
+        $rules = parent::getElementValidationRules();
+        $rules[] = [$this->handle, 'validateRequiredFields', 'skipOnEmpty' => false];
+
+        return $rules;
+    }
+
+    /**
+     * Validates the required address sub-fields.
+     *
+     * @param ElementInterface $element
+     */
+    public function validateRequiredFields(ElementInterface $element)
+    {
+        $subFields = [
+            'address1',
+            'address2',
+            'address3',
+            'city',
+            'zip',
+            'state',
+            'country',
+        ];
 
         if ($this->autocompleteEnabled) {
             $subFields[] = 'autocomplete';
@@ -304,22 +340,39 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
             $labelProp = "{$subField}Label";
             $enabledProp = "{$subField}Enabled";
             $requiredProp = "{$subField}Required";
+            $errorProp = "{$subField}ErrorMessage";
             $fieldValue = $value->$subField ?? '';
 
+            $errorMessage = $this->$errorProp ?? '"{label}" cannot be blank.';
+
             if ($this->$enabledProp && ($this->required || $this->$requiredProp) && StringHelper::isBlank($fieldValue)) {
-                $element->addError($this->handle, Craft::t('formie', '"{label}" cannot be blank.', [
+                $element->addError($this->handle, Craft::t('formie', $errorMessage, [
                     'label' => $this->$labelProp,
                 ]));
             }
 
             // Validate the postcode separately
             if ($subField === 'zip' && strlen($fieldValue) > 10) {
-                $element->addError($this->handle, Craft::t('formie', '"{label}" should contain at most {max, number} {max, plural, one{character} other{characters}}.', [
+                $element->addError($this->handle . '.' . $subField, Craft::t('formie', '"{label}" should contain at most {max, number} {max, plural, one{character} other{characters}}.', [
                     'label' => $this->$labelProp,
                     'max' => 10,
                 ]));
             }
         }
+    }
+
+    public function getCountryOptionsForDisplay(): array
+    {
+        $countries = [];
+
+        foreach (static::getCountryOptions() as $country) {
+            $label = ($this->countryOptionLabel === 'short') ? $country['value'] : $country['label'];
+            $value = ($this->countryOptionValue === 'short') ? $country['value'] : $country['label'];
+
+            $countries[] = ['label' => $label, 'value' => $value];
+        }
+
+        return $countries;
     }
 
     /**
@@ -328,6 +381,17 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
     public function getFrontEndSubfields($context): array
     {
         $subFields = [];
+
+        // Translate the value if set in shorthand to what the front-end value needs
+        $countryDefaultValue = $this->getDefaultValue('country') ?: $this->countryDefaultValue;
+
+        if ($countryDefaultValue) {
+            foreach (static::getCountryOptions() as $country) {
+                if ($countryDefaultValue === $country['value']) {
+                    $countryDefaultValue = ($this->countryOptionValue === 'short') ? $country['value'] : $country['label'];
+                }
+            }
+        }
 
         $rowConfigs = [
             [
@@ -466,9 +530,9 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
                     'required' => $this->countryRequired,
                     'placeholder' => $this->countryPlaceholder,
                     'errorMessage' => $this->countryErrorMessage,
-                    'defaultValue' => $this->getDefaultValue('country'),
+                    'defaultValue' => $countryDefaultValue,
                     'labelPosition' => $this->subfieldLabelPosition,
-                    'options' => $this->countryOptions,
+                    'options' => $this->getCountryOptionsForDisplay(),
                     'inputAttributes' => [
                         [
                             'label' => 'autocomplete',
@@ -600,12 +664,12 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
                 'handle' => 'city',
             ],
             [
-                'label' => Craft::t('formie', 'State / Province'),
-                'handle' => 'state',
-            ],
-            [
                 'label' => Craft::t('formie', 'ZIP / Postal Code'),
                 'handle' => 'zip',
+            ],
+            [
+                'label' => Craft::t('formie', 'State / Province'),
+                'handle' => 'state',
             ],
             [
                 'label' => Craft::t('formie', 'Country'),
@@ -769,7 +833,9 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
      */
     public function defineSettingsSchema(): array
     {
-        $fields = [];
+        $fields = [
+            SchemaHelper::includeInEmailField(),
+        ];
 
         foreach ($this->getSubfieldOptions() as $nestedField) {
             $subfields = [
@@ -798,6 +864,28 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
                     'help' => Craft::t('formie', 'Whether this field should show a "Use my location" button.'),
                     'name' => $nestedField['handle'] . 'CurrentLocation',
                     'if' => '$get(autocompleteIntegration).value == googlePlaces',
+                ]);
+            }
+
+            if ($nestedField['handle'] === 'country') {
+                $subfields[] = SchemaHelper::selectField([
+                    'label' => Craft::t('formie', 'Option Label'),
+                    'help' => Craft::t('formie', 'Select the format for the dropdown option label.'),
+                    'name' => $nestedField['handle'] . 'OptionLabel',
+                    'options' => array_merge(
+                        [['label' => Craft::t('formie', 'Full Country Name (e.g. United States)'), 'value' => 'full']],
+                        [['label' => Craft::t('formie', 'Abbreviated Country Name (e.g. US)'), 'value' => 'short']],
+                    ),
+                ]);
+
+                $subfields[] = SchemaHelper::selectField([
+                    'label' => Craft::t('formie', 'Option Value'),
+                    'help' => Craft::t('formie', 'Select the format for the dropdown option value.'),
+                    'name' => $nestedField['handle'] . 'OptionValue',
+                    'options' => array_merge(
+                        [['label' => Craft::t('formie', 'Full Country Name (e.g. United States)'), 'value' => 'full']],
+                        [['label' => Craft::t('formie', 'Abbreviated Country Name (e.g. US)'), 'value' => 'short']],
+                    ),
                 ]);
             }
 
@@ -877,8 +965,15 @@ class Address extends FormField implements SubfieldInterface, PreviewableFieldIn
         }
 
         if ($key === 'fieldLabel') {
+            $labelPosition = $context['labelPosition'] ?? null;
+
             return new HtmlTag('legend', [
-                'class' => 'fui-legend',
+                'class' => [
+                    'fui-legend',
+                ],
+                'data' => [
+                    'fui-sr-only' => $labelPosition instanceof HiddenPosition ? true : false,
+                ],
             ]);
         }
 

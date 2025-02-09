@@ -3,20 +3,6 @@ Formie provides a collection of events for extending its functionality. Modules 
 
 ## Form Events
 
-### The `modifyFormCaptchas` event
-The event that is triggered to allow modification of captchas for a specific form.
-
-```php
-use verbb\formie\elements\Form;
-use verbb\formie\events\ModifyFormCaptchasEvent;
-use yii\base\Event;
-
-Event::on(Form::class, Form::EVENT_MODIFY_FORM_CAPTCHAS, function(ModifyFormCaptchasEvent $event) {
-    $captchas = $event->captchas;
-    // ...
-});
-```
-
 ### The `beforeSaveForm` event
 The event that is triggered before a form is saved. You can set `$event->isValid` to false to prevent saving.
 
@@ -1560,7 +1546,7 @@ Event::on(PdfTemplates::class, PdfTemplates::EVENT_MODIFY_RENDER_OPTIONS, functi
 ## Integration Events
 
 ### The `registerFormieIntegrations` event
-The event that is triggered for registering new captcha integrations.
+The event that is triggered for registering integrations.
 
 ```php
 use verbb\formie\events\RegisterIntegrationsEvent;
@@ -1568,7 +1554,42 @@ use verbb\formie\services\Integrations;
 use yii\base\Event;
 
 Event::on(Integrations::class, Integrations::EVENT_REGISTER_INTEGRATIONS, function(RegisterIntegrationsEvent $event) {
-    $event->captchas = myCaptcha::class;
+    $event->captchas[] = ExampleCaptcha::class;
+    $event->addressProviders[] = ExampleAddressProvider::class;
+    $event->elements[] = ExampleElement::class;
+    $event->emailMarketing[] = ExampleEmailMarketing::class;
+    $event->crm[] = ExampleCrm::class;
+    $event->webhooks[] = ExampleWebhook::class;
+    $event->miscellaneous[] = ExampleMiscellaneous::class;
+    $event->payments[] = ExamplePayment::class;
+    // ...
+});
+```
+
+### The `modifyFormIntegrations` event
+The event that is triggered when all enabled integrations for a form is prepared for the front-end. This does not change the settings shown for the integration in the form builder.
+
+```php
+use verbb\formie\events\ModifyFormIntegrationsEvent;
+use verbb\formie\services\Integrations;
+use yii\base\Event;
+
+Event::on(Integrations::class, Integrations::EVENT_MODIFY_FORM_INTEGRATIONS, function(ModifyFormIntegrationsEvent $event) {
+    $integrations = $event->integrations;
+    // ...
+});
+```
+
+### The `modifyFormIntegration` event
+The event that is triggered when an integration instance is created for a form. If you want to modify the settings of an integration for a form, this would be a good event to do so.
+
+```php
+use verbb\formie\events\ModifyFormIntegrationEvent;
+use verbb\formie\services\Integrations;
+use yii\base\Event;
+
+Event::on(Integrations::class, Integrations::EVENT_MODIFY_FORM_INTEGRATION, function(ModifyFormIntegrationEvent $event) {
+    $integration = $event->integration;
     // ...
 });
 ```
@@ -1689,6 +1710,38 @@ Event::on(Mailchimp::class, Mailchimp::EVENT_AFTER_SEND_PAYLOAD, function(SendIn
 });
 ```
 
+### The `modifyPaymentPayload` event
+The event that is triggered for Payment integrations, before sends its payload to the provider. Each provider may provide different events and objects to modify as part of the payment process.
+
+```php
+use verbb\formie\events\ModifyPaymentPayloadEvent;
+use verbb\formie\integrations\payments\Stripe;
+use yii\base\Event;
+
+Event::on(Stripe::class, Stripe::EVENT_MODIFY_SINGLE_PAYLOAD, function(ModifyPaymentPayloadEvent $event) {
+    $submission = $event->submission;
+    $payload = $event->payload;
+    $integration = $event->integration;
+
+    // Modify the payload sent to Stripe for a single payment
+});
+
+Event::on(Stripe::class, Stripe::EVENT_MODIFY_SUBSCRIPTION_PAYLOAD, function(ModifyPaymentPayloadEvent $event) {
+    $submission = $event->submission;
+    $payload = $event->payload;
+    $integration = $event->integration;
+
+    // Modify the payload sent to Stripe for a subscription payment
+});
+
+Event::on(Stripe::class, Stripe::EVENT_MODIFY_PLAN_PAYLOAD, function(ModifyPaymentPayloadEvent $event) {
+    $submission = $event->submission;
+    $payload = $event->payload;
+    $integration = $event->integration;
+
+    // Modify the payload sent to Stripe for a subscription payment, when creating the plan
+});
+```
 
 
 ## Integration Connection Events
@@ -1729,8 +1782,8 @@ Event::on(Mailchimp::class, Mailchimp::EVENT_AFTER_CHECK_CONNECTION, function(In
 
 
 ## Integration Form Settings Events
-
 The below events an example using the `Mailchimp` class, but any class that inherits from the `verbb\formie\base\Integration` class can use these events.
+
 
 ### The `beforeFetchFormSettings` event
 The event that is triggered before an integration fetches its available settings for the form settings.
@@ -1877,7 +1930,6 @@ Event::on(Tokens::class, Tokens::EVENT_AFTER_DELETE_TOKEN, function(TokenEvent $
 ```
 
 
-
 ## Address Provider Integration Events
 
 ### The `modifyAddressProviderHtml` event
@@ -1893,6 +1945,44 @@ Event::on(AddressFinder::class, AddressFinder::EVENT_MODIFY_ADDRESS_PROVIDER_HTM
     // ...
 });
 ```
+
+
+## Element Integration Events
+
+### The `modifyElementFields` event
+The event that is triggered for an Element integration, which returns the available fields to map Formie field values to for the element.
+
+```php
+use verbb\formie\events\ModifyElementFieldsEvent;
+use verbb\formie\integrations\elements\Entry;
+use yii\base\Event;
+
+Event::on(Entry::class, Entry::EVENT_MODIFY_ELEMENT_FIELDS, function(ModifyElementFieldsEvent $event) {
+    $fieldLayout = $event->fieldLayout;
+    $fields = $event->fields;
+    // ...
+});
+```
+
+### The `modifyElementMatch` event
+The event that is triggered for an Element integration, when matching against an existing element. This determines whether the integration should create a new element, or update an existing one.
+
+```php
+use verbb\formie\events\ModifyElementMatchEvent;
+use verbb\formie\integrations\elements\Entry;
+use yii\base\Event;
+
+Event::on(Entry::class, Entry::EVENT_MODIFY_ELEMENT_MATCH, function(ModifyElementMatchEvent $event) {
+    $elementType = $event->elementType;
+    $identifier = $event->identifier;
+    $submission = $event->submission;
+    $criteria = $event->criteria;
+    $element = $event->element;
+    // ...
+});
+```
+
+
 
 ## Microsoft Dynamics 365 Events
 
@@ -2076,10 +2166,10 @@ You can use this event to custom Sprout Forms or Freeform field to a field Formi
 
 ```php
 use verbb\formie\events\ModifyMigrationFieldEvent;
-use verbb\formie\migrations\MigrateFreeform;
+use verbb\formie\migrations\MigrateFreeform4;
 use yii\base\Event;
 
-Event::on(MigrateFreeform::class, MigrateFreeform::EVENT_MODIFY_FIELD, function(ModifyMigrationFieldEvent $event) {
+Event::on(MigrateFreeform4::class, MigrateFreeform4::EVENT_MODIFY_FIELD, function(ModifyMigrationFieldEvent $event) {
     $field = $event->field;
     $newField = $event->newField;
     // ...
@@ -2096,4 +2186,64 @@ Event::on(MigrateSproutForms::class, MigrateSproutForms::EVENT_MODIFY_FIELD, fun
 });
 ```
 
+
+## Variable Events
+
+### The `registerVariables` event
+The event that is triggered to register additional variables for the variable-picker used in Email Notifications.
+
+```php
+use verbb\formie\helpers\Variables;
+use verbb\formie\events\RegisterVariablesEvent;
+use yii\base\Event;
+
+Event::on(Variables::class, Variables::EVENT_REGISTER_VARIABLES, function(RegisterVariablesEvent $event) {
+    $event->variables['custom'][] = [
+        'label' => 'Custom',
+        'heading' => true,
+    ];
+
+    $event->variables['custom'][] = [
+        'label' => 'Entry Title',
+        'value' => 'Some Example Title',
+    ];
+});
+```
+
+### The `modifyTwigEnvironment` event
+The event that is triggered to modify the allowed items in the Twig Sandbox used to parse some content like Email Notifications.
+
+Formie uses a Twig Sandbox with a limited set of allowed Tags, Filter and Functions. This also extends to the allowed Methods and Properties. This is a security measure to prevent Twig injections into the fields that support Twig.
+
+```php
+use verbb\formie\Formie;
+use verbb\formie\events\ModifyTwigEnvironmentEvent;
+use yii\base\Event;
+
+Event::on(Formie::class, Formie::EVENT_MODIFY_TWIG_ENVIRONMENT, function(ModifyTwigEnvironmentEvent $event) {
+    // Add allowed Twig Tags
+    $event->allowedTags[] = [
+        'tag',
+    ];
+
+    // Add allowed Twig Filters
+    $event->allowedFilters[] = [
+        'format',
+        'format_number',
+    ];
+
+    // Add allowed Twig Functions
+    $event->allowedFunctions[] = [
+        'alias',
+    ];
+
+    // Add allowed methods
+    // i.e. to allow `craft.entries.one()`
+    $event->allowedMethods[\craft\web\twig\variables\CraftVariable::class] = 'entries';
+    $event->allowedMethods[\craft\elements\db\ElementQuery::class] = 'one';
+
+    // Add allowed properties
+    $event->allowedProperties[\craft\base\Element::class] = 'title';
+});
+```
 

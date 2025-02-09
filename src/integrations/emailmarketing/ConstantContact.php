@@ -91,7 +91,7 @@ class ConstantContact extends EmailMarketing
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Constant Contact lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -231,7 +231,9 @@ class ConstantContact extends EmailMarketing
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::apiError($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $this->_client = Craft::createGuzzleClient([
@@ -292,6 +294,7 @@ class ConstantContact extends EmailMarketing
                 'handle' => $field['custom_field_id'],
                 'name' => $field['label'],
                 'type' => $this->_convertFieldType($field['type']),
+                'sourceType' => $field['type'],
             ]);
         }
 

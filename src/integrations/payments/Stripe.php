@@ -71,7 +71,7 @@ class Stripe extends Payment
     {
         return true;
     }
-    
+
     public static function toStripeAmount(float $amount, string $currency): float
     {
         if (in_array(strtoupper($currency), self::ZERO_DECIMAL_CURRENCIES)) {
@@ -109,7 +109,7 @@ class Stripe extends Payment
      */
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Provide payment capabilities for your forms with Stripe.');
+        return Craft::t('formie', 'Provide payment capabilities for your forms with {name}.', ['name' => static::displayName()]);
     }
 
     /**
@@ -135,7 +135,7 @@ class Stripe extends Payment
         ];
 
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/payments/stripe.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/payments/stripe.js'),
             'module' => 'FormieStripe',
             'settings' => $settings,
         ];
@@ -208,7 +208,7 @@ class Stripe extends Payment
 
         $field = $this->getField();
         $fieldValue = $this->getPaymentFieldValue($submission);
-        $subscriptionId = $fieldValue['stripeSubscriptionId'] ?? null; 
+        $subscriptionId = $fieldValue['stripeSubscriptionId'] ?? null;
 
         try {
             // Are we come back from a 3DS verification? Update the payment, skip everything else (already done)
@@ -309,7 +309,7 @@ class Stripe extends Payment
             // Is this paid, or needs further action (3DS)?
             if ($response->status === StripeSubscription::STATUS_INCOMPLETE && $invoice->status === StripeInvoice::STATUS_OPEN) {
                 $paymentIntent = $invoice->payment_intent;
-                
+
                 if ($paymentIntent->status === PaymentIntent::STATUS_REQUIRES_ACTION) {
                     // Store the data we need for 3DS against the form, which is added is the Ajax response
                     $submission->getForm()->addFrontEndJsEvents([
@@ -357,7 +357,7 @@ class Stripe extends Payment
 
         $field = $this->getField();
         $fieldValue = $this->getPaymentFieldValue($submission);
-        $paymentMethodId = $fieldValue['stripePaymentId'] ?? null; 
+        $paymentMethodId = $fieldValue['stripePaymentId'] ?? null;
         $paymentIntentId = $fieldValue['stripePaymentIntentId'] ?? null;
 
         $amount = 0;
@@ -418,6 +418,11 @@ class Stripe extends Payment
                 'confirm' => true,
                 'payment_method' => $paymentMethodId,
             ];
+
+            // Get the Stripe customer. We create a new one each transaction
+            if ($customer = $this->_getCustomer($submission)) {
+                $payload['customer'] = $customer['id'];
+            }
 
             // Add in extra settings configured at the field level
             $this->_setPayloadDetails($payload, $submission);
@@ -487,7 +492,7 @@ class Stripe extends Payment
             return false;
         } catch (StripeException\ApiErrorException $e) {
             $body = $e->getJsonBody();
-            
+
             $payment = new PaymentModel();
             $payment->integrationId = $this->id;
             $payment->submissionId = $submission->id;
@@ -1137,7 +1142,8 @@ class Stripe extends Payment
         ];
 
         // Create a unique ID for this form+field+payload. Only used internally, but prevents creating duplicate plans (which throws an error)
-        $payload['id'] = ArrayHelper::recursiveImplode('_', array_merge(['formie', $submission->getForm()->handle, $field->handle], $payload));
+        $payload['id'] = ArrayHelper::recursiveImplode(array_merge(['formie', $submission->getForm()->handle, $field->handle], $payload), '_');
+        $payload['id'] = str_replace([' ', ':'], ['_', ''], $payload['id']);
 
         // Generate a nice name for the price description based on the payload. Added after the ID is generated based on the payload
         $payload['nickname'] = implode(' ', [
@@ -1191,7 +1197,7 @@ class Stripe extends Payment
             return null;
         }
     }
-    
+
     /**
      * @inheritDoc
      */
@@ -1239,7 +1245,7 @@ class Stripe extends Payment
         // We always create a new customer. Maybe one day we'll figure out a way to handle this better
         $field = $this->getField();
         $fieldValue = $this->getPaymentFieldValue($submission);
-        $paymentMethodId = $fieldValue['stripePaymentId'] ?? null; 
+        $paymentMethodId = $fieldValue['stripePaymentId'] ?? null;
 
         // Create base-level customer data with the payload from the front-end
         $payload = [
@@ -1326,7 +1332,7 @@ class Stripe extends Payment
                 $value = trim($option['value']);
 
                 if ($label && $value) {
-                    $payload['metadata'][$label] = $value;
+                    $payload['metadata'][$label] = Variables::getParsedValue($value, $submission, $submission->getForm());
                 }
             }
         }

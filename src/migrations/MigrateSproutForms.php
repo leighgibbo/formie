@@ -12,11 +12,12 @@ use verbb\formie\events\ModifyMigrationSubmissionEvent;
 use verbb\formie\fields\formfields;
 use verbb\formie\helpers\Variables;
 use verbb\formie\models\Address;
+use verbb\formie\models\FieldLayout;
+use verbb\formie\models\FieldLayoutPage;
 use verbb\formie\models\Name;
 use verbb\formie\models\Notification;
 use verbb\formie\models\Phone;
-use verbb\formie\models\FieldLayout;
-use verbb\formie\models\FieldLayoutPage;
+use verbb\formie\models\Settings;
 use verbb\formie\positions\Hidden as HiddenPosition;
 use verbb\formie\prosemirror\toprosemirror\Renderer;
 
@@ -39,7 +40,6 @@ use barrelstrength\sproutforms\fields\formfields as sproutfields;
 use barrelstrength\sproutbaseemail\elements\NotificationEmail;
 use barrelstrength\sproutbaseemail\SproutBaseEmail;
 use barrelstrength\sproutforms\SproutForms;
-use verbb\formie\models\Settings;
 
 /**
  * Migrates Sprout Forms forms, notifications and submissions.
@@ -437,49 +437,47 @@ class MigrateSproutForms extends Migration
 
                 $pageFields = [];
 
-                foreach ($tab->getFields() as $field) {
-                    $newField = $this->_mapField($field);
-
                 foreach ($tab->getCustomFields() as $field) {
                     if ($newField = $this->_mapField($field)) {
-                    // Fire a 'modifyField' event
-                    $event = new ModifyMigrationFieldEvent([
-                        'form' => $this->_form,
-                        'originForm' => $form,
-                        'field' => $field,
-                        'newField' => $newField,
-                    ]);
-                    $this->trigger(self::EVENT_MODIFY_FIELD, $event);
+                        // Fire a 'modifyField' event
+                        $event = new ModifyMigrationFieldEvent([
+                            'form' => $this->_form,
+                            'originForm' => $form,
+                            'field' => $field,
+                            'newField' => $newField,
+                        ]);
+                        $this->trigger(self::EVENT_MODIFY_FIELD, $event);
 
-                    if (!$event->isValid) {
-                        $this->stdout("    > Skipped field “{$newField->handle}” due to event cancellation.", Console::FG_YELLOW);
-                        continue;
-                    }
-
-                    // Allow events to modify the `newField`
-                    $newField = $event->newField;
-
-                    if ($newField) {
-                        $newField->validate();
-
-                        if ($newField->hasErrors()) {
-                            $this->stdout("    > Failed to save field “{$newField->handle}”.", Console::FG_RED);
-
-                            foreach ($newField->getErrors() as $attr => $errors) {
-                                foreach ($errors as $error) {
-                                    $this->stdout("    > $attr: $error", Console::FG_RED);
-                                }
-                            }
-
+                        if (!$event->isValid) {
+                            $this->stdout("    > Skipped field “{$newField->handle}” due to event cancellation.", Console::FG_YELLOW);
                             continue;
                         }
 
-                        $newField->sortOrder = 0;
-                        $newField->rowIndex = count($pageFields);
-                        $pageFields[] = $newField;
-                        $fields[] = $newField;
-                    } else {
-                        $this->stdout("    > Failed to migrate field “{$field->handle}” on form “{$form->handle}”. Unsupported field.", Console::FG_RED);
+                        // Allow events to modify the `newField`
+                        $newField = $event->newField;
+
+                        if ($newField) {
+                            $newField->validate();
+
+                            if ($newField->hasErrors()) {
+                                $this->stdout("    > Failed to save field “{$newField->handle}”.", Console::FG_RED);
+
+                                foreach ($newField->getErrors() as $attr => $errors) {
+                                    foreach ($errors as $error) {
+                                        $this->stdout("    > $attr: $error", Console::FG_RED);
+                                    }
+                                }
+
+                                continue;
+                            }
+
+                            $newField->sortOrder = 0;
+                            $newField->rowIndex = count($pageFields);
+                            $pageFields[] = $newField;
+                            $fields[] = $newField;
+                        } else {
+                            $this->stdout("    > Failed to migrate field “{$field->handle}” on form “{$form->handle}”. Unsupported field.", Console::FG_RED);
+                        }
                     }
                 }
 

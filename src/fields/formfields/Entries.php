@@ -10,6 +10,7 @@ use verbb\formie\events\ModifyElementFieldQueryEvent;
 use verbb\formie\helpers\SchemaHelper;
 use verbb\formie\models\HtmlTag;
 use verbb\formie\models\Notification;
+use verbb\formie\positions\Hidden as HiddenPosition;
 
 use Craft;
 use craft\elements\Entry;
@@ -217,15 +218,18 @@ class Entries extends CraftEntries implements FormFieldInterface
             $query->siteId(Craft::$app->getSites()->getCurrentSite()->id);
         }
 
+        // Ensure we call the getter to handle pre-populated values correctly
+        $defaultValue = $this->getDefaultValue();
+
         // Check if a default value has been set AND we're limiting. We need to resolve the value before limiting
-        if ($this->defaultValue && $this->limitOptions) {
+        if ($defaultValue && $this->limitOptions) {
             $ids = [];
 
             // Handle the two ways a default value can be set
-            if ($this->defaultValue instanceof ElementQueryInterface) {
-                $ids = $this->defaultValue->id;
+            if ($defaultValue instanceof ElementQueryInterface) {
+                $ids = $defaultValue->id;
             } else {
-                $ids = ArrayHelper::getColumn($this->defaultValue, 'id');
+                $ids = ArrayHelper::getColumn($defaultValue, 'id');
             }
 
             if ($ids) {
@@ -238,7 +242,7 @@ class Entries extends CraftEntries implements FormFieldInterface
 
         // Allow any template-defined elementQuery to override
         if ($this->elementsQuery) {
-            Craft::configure($query, $this->elementsQuery);
+            $query = $this->elementsQuery;
         }
 
         // Fire a 'modifyElementFieldQuery' event
@@ -332,7 +336,11 @@ class Entries extends CraftEntries implements FormFieldInterface
     public function getSettingGqlTypes(): array
     {
         return array_merge($this->traitGetSettingGqlTypes(), [
-           'defaultValue' => [
+            'displayType' => [
+                'name' => 'displayType',
+                'type' => Type::string(),
+            ],
+            'defaultValue' => [
                 'name' => 'defaultValue',
                 'type' => Type::string(),
                 'resolve' => function($field) {
@@ -422,6 +430,7 @@ class Entries extends CraftEntries implements FormFieldInterface
                 'if' => '$get(required).value',
             ]),
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
             SchemaHelper::numberField([
                 'label' => Craft::t('formie', 'Limit Options'),
                 'help' => Craft::t('formie', 'Limit the number of available entries.'),
@@ -437,7 +446,10 @@ class Entries extends CraftEntries implements FormFieldInterface
                 'label' => Craft::t('formie', 'Options Order'),
                 'help' => Craft::t('formie', 'Select what order to show entries by.'),
                 'name' => 'orderBy',
-                'options' => $this->getOrderByOptions(),
+                'options' => array_merge([
+                    ['value' => 'lft ASC', 'label' => 'Structure Ascending'],
+                    ['value' => 'lft DESC', 'label' => 'Structure Descending'],
+                ], $this->getOrderByOptions()),
             ]),
         ];
     }
@@ -507,8 +519,15 @@ class Entries extends CraftEntries implements FormFieldInterface
             }
 
             if ($key === 'fieldLabel') {
+                $labelPosition = $context['labelPosition'] ?? null;
+
                 return new HtmlTag('legend', [
-                    'class' => 'fui-legend',
+                    'class' => [
+                        'fui-legend',
+                    ],
+                    'data' => [
+                        'fui-sr-only' => $labelPosition instanceof HiddenPosition ? true : false,
+                    ],
                 ]);
             }
         }

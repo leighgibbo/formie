@@ -42,6 +42,20 @@ class Phone extends Model
     // Public Methods
     // =========================================================================
 
+    public function __construct($config = [])
+    {
+        // Normalize the settings. Included in `toArray` for integrations, but not actively in use. Potentially refactor.
+        if (array_key_exists('countryCode', $config)) {
+            unset($config['countryCode']);
+        }
+
+        if (array_key_exists('countryName', $config)) {
+            unset($config['countryName']);
+        }
+
+        parent::__construct($config);
+    }
+
     /**
      * Returns the formatted phone number.
      *
@@ -56,16 +70,11 @@ class Phone extends Model
 
                 return $phoneUtil->format($numberProto, PhoneNumberFormat::INTERNATIONAL);
             } catch (NumberParseException $e) {
-                if ($this->number) {
-                    $countryString = $this->country ? '(' . $this->country . ') ' : '';
+                if ($this->number && is_numeric($this->number)) {
+                    // Consider the number still valid
+                    $countryString = $this->country && is_numeric($this->country) ? '(' . $this->country . ') ' : '';
 
                     return $countryString . $this->number;
-                }
-
-                if ($this->country) {
-                    return Craft::t('formie', '({country}) Not provided.', [
-                        'country' => $this->country,
-                    ]);
                 }
 
                 return '';
@@ -97,10 +106,25 @@ class Phone extends Model
     public function getCountryName(): string
     {
         if ($this->country) {
-            return Craft::$app->getAddresses()->getCountryRepository()->get($this->country)->getName();
+            try {
+                return Craft::$app->getAddresses()->getCountryRepository()->get($this->country)->getName();
+            } catch (Throwable $e) {
+
+            }
         }
 
         return '';
+    }
+
+    public function toArray(array $fields = [], array $expand = [], $recursive = true)
+    {
+        $array = parent::toArray($fields, $expand, $recursive);
+
+        // Allow extra data to be serialized
+        $array['countryCode'] = $this->getCountryCode();
+        $array['countryName'] = $this->getCountryName();
+
+        return $array;
     }
 
 }

@@ -13,6 +13,7 @@ use verbb\formie\models\Phone as PhoneModel;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\PreviewableFieldInterface;
+use craft\base\SortableFieldInterface;
 use craft\helpers\Html;
 use craft\helpers\Json;
 use craft\helpers\StringHelper;
@@ -22,7 +23,7 @@ use GraphQL\Type\Definition\Type;
 use yii\base\Event;
 use yii\db\Schema;
 
-class Phone extends FormField implements SubfieldInterface, PreviewableFieldInterface
+class Phone extends FormField implements SubfieldInterface, PreviewableFieldInterface, SortableFieldInterface
 {
     // Traits
     // =========================================================================
@@ -86,6 +87,11 @@ class Phone extends FormField implements SubfieldInterface, PreviewableFieldInte
             return Schema::TYPE_TEXT;
         }
 
+        // Content encryption can make field content quite large
+        if ($this->enableContentEncryption) {
+            return Schema::TYPE_TEXT;
+        }
+
         return Schema::TYPE_STRING;
     }
 
@@ -136,11 +142,17 @@ class Phone extends FormField implements SubfieldInterface, PreviewableFieldInte
         return parent::serializeValue($value, $element);
     }
 
+    public function isValueEmpty(mixed $value, ElementInterface $element): bool
+    {
+        // Ensure that we're checking the string representation of a number's "empty" state
+        return (string)$value === '';
+    }
+
     public function getFrontEndJsModules(): ?array
     {
         if ($this->countryEnabled) {
             return [
-                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/phone-country.js', true),
+                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/phone-country.js'),
                 'module' => 'FormiePhoneCountry',
                 'settings' => [
                     'countryShowDialCode' => $this->countryShowDialCode,
@@ -208,13 +220,12 @@ class Phone extends FormField implements SubfieldInterface, PreviewableFieldInte
         if ($this->required) {
             $value = $element->getFieldValue($this->handle);
 
+            $errorMessage = $this->errorMessage ?? '"{label}" cannot be blank.';
+
             if (StringHelper::isBlank((string)$value->number)) {
-                $element->addError(
-                    $this->handle,
-                    Craft::t('formie', '"{label}" cannot be blank.', [
-                        'label' => $this->name,
-                    ])
-                );
+                $element->addError($this->handle . '.number', Craft::t('formie', $errorMessage, [
+                    'label' => $this->name,
+                ]));
             }
         }
     }
@@ -253,7 +264,17 @@ class Phone extends FormField implements SubfieldInterface, PreviewableFieldInte
 
     public function populateValue($value): void
     {
+        // Ensure that we normalize the default value. TODO: we should move this to the parent function
         $this->defaultValue = $this->normalizeValue($value);
+    }
+
+    public function getDefaultValue($attributePrefix = '')
+    {
+        // Ensure that we normalize the default value. TODO: we should move this to the parent function
+        $defaultValue = parent::getDefaultValue($attributePrefix);
+        $defaultValue = $this->normalizeValue(parent::getDefaultValue($attributePrefix), null);
+
+        return $defaultValue;
     }
 
     public function getSettingGqlTypes(): array
@@ -330,6 +351,7 @@ class Phone extends FormField implements SubfieldInterface, PreviewableFieldInte
                 'if' => '$get(required).value',
             ]),
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
         ];
     }
 
@@ -386,7 +408,7 @@ class Phone extends FormField implements SubfieldInterface, PreviewableFieldInte
                 ],
                 'name' => $this->getHtmlName('number'),
                 'placeholder' => Craft::t('formie', $this->placeholder) ?: null,
-                'autocomplete' => 'tel-national',
+                'autocomplete' => 'tel',
                 'required' => $this->required ? true : null,
                 'data' => [
                     'fui-id' => $dataId,

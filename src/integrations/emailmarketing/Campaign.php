@@ -153,9 +153,11 @@ class Campaign extends EmailMarketing
             // Pull out email, as it needs to be top level
             $email = ArrayHelper::remove($fieldValues, 'email');
 
+            $referrer = $this->context['referrer'] ?? null;
+
             // The `createAndSubscribeContact` method was added in Campaign v2.1.0.
             if (method_exists(CampaignPlugin::$plugin->forms, 'createAndSubscribeContact')) {
-                $contact = CampaignPlugin::$plugin->forms->createAndSubscribeContact($email, $fieldValues, $list, 'formie', $this->referrer);
+                $contact = CampaignPlugin::$plugin->forms->createAndSubscribeContact($email, $fieldValues, $list, 'formie', $referrer);
                 
                 if ($contact->hasErrors()) {
                     Integration::error($this, Craft::t('formie', 'Unable to save contact: “{errors}”.', [
@@ -184,7 +186,7 @@ class Campaign extends EmailMarketing
                     $pendingContact = new PendingContactModel();
                     $pendingContact->email = $email;
                     $pendingContact->mailingListId = $list->id;
-                    $pendingContact->source = $this->referrer;
+                    $pendingContact->source = $referrer;
                     $pendingContact->fieldData = $contact->getSerializedFieldValues();
     
                     if (!CampaignPlugin::$plugin->pendingContacts->savePendingContact($pendingContact)) {
@@ -207,7 +209,7 @@ class Campaign extends EmailMarketing
                     }
     
                     // Subscribe them to the mailing list
-                    CampaignPlugin::$plugin->forms->subscribeContact($contact, $list, 'formie', $this->referrer);
+                    CampaignPlugin::$plugin->forms->subscribeContact($contact, $list, 'formie', $referrer);
                 }
             } 
         } catch (Throwable $e) {
@@ -253,6 +255,7 @@ class Campaign extends EmailMarketing
                 'handle' => $field->handle,
                 'name' => $field->name,
                 'type' => $this->_convertFieldType(get_class($field)),
+                'sourceType' => get_class($field),
                 'required' => (bool)$field->required,
             ]);
         }

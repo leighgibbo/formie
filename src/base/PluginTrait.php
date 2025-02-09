@@ -2,6 +2,7 @@
 namespace verbb\formie\base;
 
 use verbb\formie\Formie;
+use verbb\formie\events\ModifyTwigEnvironmentEvent;
 use verbb\formie\services\Emails;
 use verbb\formie\services\EmailTemplates;
 use verbb\formie\services\Fields;
@@ -28,9 +29,11 @@ use verbb\formie\services\Syncs;
 use verbb\formie\services\Tokens;
 use verbb\formie\web\assets\forms\FormsAsset;
 use verbb\base\BaseHelper;
+use verbb\base\services\Templates;
 
 use Craft;
 
+use yii\base\Event;
 use yii\log\Logger;
 
 use nystudio107\pluginvite\services\VitePluginService;
@@ -66,6 +69,23 @@ trait PluginTrait
 
     // Public Methods
     // =========================================================================
+
+    public function __construct($id, $parent = null, array $config = [])
+    {
+        // Set the source language to be the current site, not `en-US`. We could have a German site (primary) where all field content
+        // is written in German. Then an English site we translate to. The German site will then show all texts in English as the source
+        // and destination message is the same, because it will translate to the `sourceLanguage` - `en-US`.
+        // This isn't an issue for other plugins, but we use the `formie` translation category to translate user-created content
+        // not just plugin-created content, which is always going to be written in English.
+        // Also, only do this for the front-end, so that the users' language preference is respected in the CP
+        if (Craft::$app->getRequest()->getIsSiteRequest()) {
+            if ($currentSite = Craft::$app->getSites()->getCurrentSite()) {
+                $config['sourceLanguage'] = $currentSite->language;
+            }
+        }
+
+        return parent::__construct($id, $parent , $config);
+    }
 
     public function getEmails(): Emails
     {
@@ -182,6 +202,11 @@ trait PluginTrait
         return $this->get('syncs');
     }
 
+    public function getTemplates(): Templates
+    {
+        return $this->get('templates');
+    }
+
     public function getTokens(): Tokens
     {
         return $this->get('tokens');
@@ -198,6 +223,16 @@ trait PluginTrait
 
     private function _registerComponents(): void
     {
+        // Allow plugins to modify the template variables
+        $event = new ModifyTwigEnvironmentEvent([
+            'allowedTags' => [],
+            'allowedFilters' => [],
+            'allowedFunctions' => [],
+            'allowedMethods' => [],
+            'allowedProperties' => [],
+        ]);
+        Event::trigger(self::class, self::EVENT_MODIFY_TWIG_ENVIRONMENT, $event);
+
         $this->setComponents([
             'emails' => Emails::class,
             'emailTemplates' => EmailTemplates::class,
@@ -222,6 +257,15 @@ trait PluginTrait
             'submissions' => Submissions::class,
             'subscriptions' => Subscriptions::class,
             'syncs' => Syncs::class,
+            'templates' => [
+                'class' => Templates::class,
+                'pluginClass' => Formie::class,
+                'allowedTags' => $event->allowedTags,
+                'allowedFilters' => $event->allowedFilters,
+                'allowedFunctions' => $event->allowedFunctions,
+                'allowedMethods' => $event->allowedMethods,
+                'allowedProperties' => $event->allowedProperties,
+            ],
             'tokens' => Tokens::class,
             'vite' => [
                 'class' => VitePluginService::class,

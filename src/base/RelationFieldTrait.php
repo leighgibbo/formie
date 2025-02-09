@@ -171,11 +171,17 @@ trait RelationFieldTrait
         return null;
     }
 
-    public function populateValue($value): void
+    public function populateValue(mixed $value): void
     {
-        $query = static::elementType()::find()->id($value);
+        if ($value) {
+            if ($value instanceof ElementQuery) {
+                $query = $value;
+            } else {
+                $query = static::elementType()::find()->id($value);
+            }
 
-        $this->defaultValue = $query;
+            $this->defaultValue = $query;
+        }
     }
 
     public function getFieldOptions(): array
@@ -454,6 +460,7 @@ trait RelationFieldTrait
         if ($element !== null) {
             $clone->preferSites([$this->targetSiteId($element)]);
         }
+        
         return $clone;
     }
 

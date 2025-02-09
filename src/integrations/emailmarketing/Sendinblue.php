@@ -45,7 +45,7 @@ class Sendinblue extends EmailMarketing
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Sendinblue lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -232,6 +232,7 @@ class Sendinblue extends EmailMarketing
                 'handle' => $field['name'],
                 'name' => $field['name'],
                 'type' => $this->_convertFieldType($type),
+                'sourceType' => $type,
                 'options' => $options,
             ]);
         }

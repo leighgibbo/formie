@@ -59,7 +59,7 @@ class PayPal extends Payment
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Provide payment capabilities for your forms with PayPal.');
+        return Craft::t('formie', 'Provide payment capabilities for your forms with {name}.', ['name' => static::displayName()]);
     }
 
     /**
@@ -115,7 +115,7 @@ class PayPal extends Payment
         ];
 
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/payments/paypal.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/payments/paypal.js'),
             'module' => 'FormiePayPal',
             'settings' => $settings,
         ];

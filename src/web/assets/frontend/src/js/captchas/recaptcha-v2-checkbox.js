@@ -1,8 +1,11 @@
+import { FormieCaptchaProvider } from './captcha-provider';
 import { recaptcha } from './inc/recaptcha';
 import { t, eventKey } from '../utils/utils';
 
-export class FormieRecaptchaV2Checkbox {
+export class FormieRecaptchaV2Checkbox extends FormieCaptchaProvider {
     constructor(settings = {}) {
+        super(settings);
+
         this.$form = settings.$form;
         this.form = this.$form.form;
         this.siteKey = settings.siteKey;
@@ -95,19 +98,8 @@ export class FormieRecaptchaV2Checkbox {
             $token.remove();
         }
 
-        // Check if we actually need to re-render this, or just refresh it...
-        const currentRecaptchaId = this.$placeholder.getAttribute('data-recaptcha-id');
-
-        if (currentRecaptchaId !== null) {
-            this.recaptchaId = currentRecaptchaId;
-
-            recaptcha.reset(this.recaptchaId);
-
-            return;
-        }
-
         // Render the recaptcha
-        recaptcha.render(this.$placeholder, {
+        recaptcha.render(this.createInput(), {
             sitekey: this.siteKey,
             theme: this.theme,
             size: this.size,
@@ -115,9 +107,6 @@ export class FormieRecaptchaV2Checkbox {
             'error-callback': this.onError.bind(this),
         }, (id) => {
             this.recaptchaId = id;
-
-            // Update the placeholder with our ID, in case we need to re-render it
-            this.$placeholder.setAttribute('data-recaptcha-id', id);
         });
     }
 
@@ -200,6 +189,7 @@ export class FormieRecaptchaV2Checkbox {
 
     onError(error) {
         console.error('ReCAPTCHA was unable to load');
+        console.error(error);
     }
 }
 

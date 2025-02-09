@@ -13,6 +13,7 @@ use verbb\formie\models\HtmlTag;
 use Craft;
 use craft\base\ElementInterface;
 use craft\base\PreviewableFieldInterface;
+use craft\base\SortableFieldInterface;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\UrlHelper;
 use craft\web\View;
@@ -20,7 +21,7 @@ use craft\web\View;
 use Throwable;
 use DateTime;
 
-class Hidden extends FormField implements PreviewableFieldInterface
+class Hidden extends FormField implements PreviewableFieldInterface, SortableFieldInterface
 {
     // Static Methods
     // =========================================================================
@@ -125,8 +126,6 @@ class Hidden extends FormField implements PreviewableFieldInterface
                 $value = $this->defaultValue;
             }
 
-            // Prevent users using long-hand Twig `{{` to prevent injection execution
-            $value = str_replace(['{{', '}}'], ['{', '}'], $value);
             $value = Variables::getParsedValue($value, $element);
 
             // Immediately update the value for the element, so integrations use the up-to-date value
@@ -176,7 +175,7 @@ class Hidden extends FormField implements PreviewableFieldInterface
     {
         if ($this->defaultOption === 'cookie' && $this->cookieName) {
             return [
-                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/hidden.js', true),
+                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/hidden.js'),
                 'module' => 'FormieHidden',
                 'settings' => [
                     'cookieName' => $this->cookieName,
@@ -271,11 +270,7 @@ class Hidden extends FormField implements PreviewableFieldInterface
     public function defineSettingsSchema(): array
     {
         return [
-            SchemaHelper::lightswitchField([
-                'label' => Craft::t('formie', 'Include in Email Notifications'),
-                'help' => Craft::t('formie', 'Whether the value of this field should be included in email notifications.'),
-                'name' => 'includeInEmail',
-            ]),
+            SchemaHelper::includeInEmailField(),
         ];
     }
 
@@ -300,6 +295,10 @@ class Hidden extends FormField implements PreviewableFieldInterface
 
         $id = $this->getHtmlId($form);
         $dataId = $this->getHtmlDataId($form);
+
+        if ($key === 'fieldLabel') {
+            return null;
+        }
 
         if ($key === 'fieldInput') {
             return new HtmlTag('input', [

@@ -34,6 +34,7 @@ export default ({ command }) => ({
     plugins: [
         // Custom plugins (for the moment)
         ImageminCopy,
+        StaticCopy,
 
         // Keep JS looking good with eslint
         // https://github.com/gxmari007/vite-plugin-eslint

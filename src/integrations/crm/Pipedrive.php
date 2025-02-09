@@ -66,12 +66,21 @@ class Pipedrive extends Crm
                     $event->value = [$event->value['number']];
                 }
             }
+
+            // Special handling for "Multiple Options" (set) Pipedrive fields, which expect an ID of the option as a numeric value
+            if ($event->integrationField->sourceType === 'set') {
+                if (is_array($event->value)) {
+                    foreach ($event->value as $key => $value) {
+                        $event->value[$key] = (int)$value;
+                    }
+                }
+            }
         });
     }
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Manage your Pipedrive customers by providing important information on their conversion on your site.');
+        return Craft::t('formie', 'Manage your {name} customers by providing important information on their conversion on your site.', ['name' => static::displayName()]);
     }
 
     /**
@@ -129,59 +138,64 @@ class Pipedrive extends Crm
 
         try {
             // Get Person fields
-            $response = $this->request('GET', 'personFields');
-            $fields = $response['data'] ?? [];
-            $personFields = array_merge($this->_getCustomFields($fields), [
-                new IntegrationField([
-                    'handle' => 'note',
-                    'name' => Craft::t('formie', 'Note'),
-                ]),
-            ]);
+            if ($this->mapToPerson) {
+                $response = $this->request('GET', 'personFields');
+                $fields = $response['data'] ?? [];
+
+                $settings['person'] = array_merge($this->_getCustomFields($fields), [
+                    new IntegrationField([
+                        'handle' => 'note',
+                        'name' => Craft::t('formie', 'Note'),
+                    ]),
+                ]);
+            }
 
             // Get Deal fields
-            $response = $this->request('GET', 'dealFields');
-            $fields = $response['data'] ?? [];
-            $dealFields = array_merge($this->_getCustomFields($fields), [
-                new IntegrationField([
-                    'handle' => 'note',
-                    'name' => Craft::t('formie', 'Note'),
-                ]),
-            ]);
+            if ($this->mapToDeal) {
+                $response = $this->request('GET', 'dealFields');
+                $fields = $response['data'] ?? [];
+
+                $settings['deal'] = array_merge($this->_getCustomFields($fields), [
+                    new IntegrationField([
+                        'handle' => 'note',
+                        'name' => Craft::t('formie', 'Note'),
+                    ]),
+                ]);
+            }
 
             // Get Lead fields - uses the same custom fields as deals
-            $leadFields = array_merge($this->_getCustomFields($fields, ['currency', 'probability', 'stage_id', 'label', 'status']), [
-                new IntegrationField([
-                    'handle' => 'owner_id',
-                    'name' => Craft::t('formie', 'Owner ID'),
-                ]),
-                new IntegrationField([
-                    'handle' => 'note',
-                    'name' => Craft::t('formie', 'Note'),
-                ]),
-            ]);
+            if ($this->mapToLead) {
+                $settings['lead'] = array_merge($this->_getCustomFields($fields, ['currency', 'probability', 'stage_id', 'label', 'status']), [
+                    new IntegrationField([
+                        'handle' => 'owner_id',
+                        'name' => Craft::t('formie', 'Owner ID'),
+                    ]),
+                    new IntegrationField([
+                        'handle' => 'note',
+                        'name' => Craft::t('formie', 'Note'),
+                    ]),
+                ]);
+            }
 
             // Get Organization fields
-            $response = $this->request('GET', 'organizationFields');
-            $fields = $response['data'] ?? [];
-            $organizationFields = array_merge($this->_getCustomFields($fields), [
-                new IntegrationField([
-                    'handle' => 'note',
-                    'name' => Craft::t('formie', 'Note'),
-                ]),
-            ]);
+            if ($this->mapToOrganization) {
+                $response = $this->request('GET', 'organizationFields');
+                $fields = $response['data'] ?? [];
+
+                $settings['organization'] = array_merge($this->_getCustomFields($fields), [
+                    new IntegrationField([
+                        'handle' => 'note',
+                        'name' => Craft::t('formie', 'Note'),
+                    ]),
+                ]);
+            }
 
             // Get Note fields
-            $response = $this->request('GET', 'noteFields');
-            $fields = $response['data'] ?? [];
-            $noteFields = $this->_getCustomFields($fields);
-
-            $settings = [
-                'person' => $personFields,
-                'deal' => $dealFields,
-                'lead' => $leadFields,
-                'organization' => $organizationFields,
-                'note' => $noteFields,
-            ];
+            if ($this->mapToNote) {
+                $response = $this->request('GET', 'noteFields');
+                $fields = $response['data'] ?? [];
+                $settings['note'] = $this->_getCustomFields($fields);
+            }
         } catch (Throwable $e) {
             Integration::apiError($this, $e);
         }
@@ -562,6 +576,7 @@ class Pipedrive extends Crm
                 'handle' => $field['key'],
                 'name' => $field['name'],
                 'type' => $this->_convertFieldType($field['field_type']),
+                'sourceType' => $field['field_type'],
                 'required' => $required,
                 'options' => $options,
             ]);

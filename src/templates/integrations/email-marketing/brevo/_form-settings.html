@@ -1,12 +1,14 @@
 {% import '_includes/forms' as forms %}
+{% import 'verbb-base/_macros' as macros %}
 
 {% set handle = integration.handle %}
+{% set displayName = integration.displayName() %}
 {% set formSettings = integration.getFormSettings().getSettings() %}
 {% set listId = form.settings.integrations[handle].listId ?? '' %}
 
 <field-select
     label="{{ 'Opt-In Field' | t('formie') }}"
-    instructions="{{ 'Choose a field to opt-in to {name}. For example, you might only wish to subscribe users if they provide a value for a field of your choice - commonly, an Agree field.' | t('formie', { name: integration.displayName() }) }}"
+    instructions="{{ 'Choose a field to opt-in to {name}. For example, you might only wish to subscribe users if they provide a value for a field of your choice - commonly, an Agree field.' | t('formie', { name: displayName }) }}"
     id="opt-in-field"
     name="optInField"
     :value="get(form, 'settings.integrations.{{ handle }}.optInField')"
@@ -19,7 +21,7 @@
                 <label id="sourceId-label" for="sourceId" class="required">{{ 'List' | t('formie') }}</label>
 
                 <div class="instructions">
-                    <p>{{ 'Select your {name} list to create contacts on.' | t('formie', { name: integration.displayName() }) }}</p>
+                    <p>{{ 'Select your {name} list to create contacts on.' | t('formie', { name: displayName }) }}</p>
                 </div>
             </div>
 
@@ -49,7 +51,7 @@
 
         <integration-field-mapping
             label="{{ 'Field Mapping' | t('formie') }}"
-            instructions="{{ 'Choose how your form fields should map to your {name} fields.' | t('formie', { name: integration.displayName() }) }}"
+            instructions="{{ 'Choose how your form fields should map to your {name} fields.' | t('formie', { name: displayName }) }}"
             id="field-mapping"
             name-label="{{ integration.displayName() }}"
             name="fieldMapping"
@@ -64,3 +66,34 @@
         </ul>
     </template>
 </integration-form-settings>
+
+{% set useDoubleOptIn = form.settings.integrations[handle].useDoubleOptIn ?? false %}
+
+{{ forms.lightswitchField({
+    label: 'Use Double Opt in' | t('formie'),
+    instructions: 'Whether to use double opt-in, which will send the user a confirmation email before they‘re added to the list.' | t('formie'),
+    id: 'useDoubleOptIn',
+    name: 'useDoubleOptIn',
+    on: useDoubleOptIn,
+    toggle: 'optin',
+}) }}
+
+<div id="optin" class="{{ not useDoubleOptIn ? 'hidden' }}">
+    {{ forms.textField({
+        label: 'Template ID' | t('formie'),
+        instructions: 'ID of the Double opt-in (DOI) template.' | t('formie'),
+        id: 'templateId',
+        name: 'templateId',
+        required: true,
+        value: form.settings.integrations[handle].templateId ?? '',
+    }) }}
+
+    {{ forms.textField({
+        label: 'Redirection URL' | t('formie'),
+        instructions: 'URL of the web page that user will be redirected to after clicking on the double opt in URL.' | t('formie'),
+        id: 'redirectionUrl',
+        name: 'redirectionUrl',
+        required: true,
+        value: form.settings.integrations[handle].redirectionUrl ?? '',
+    }) }}
+</div>

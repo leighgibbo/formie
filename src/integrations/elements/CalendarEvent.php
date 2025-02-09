@@ -25,7 +25,6 @@ use yii\base\Event;
 
 use Solspace\Calendar\Calendar;
 use Solspace\Calendar\Elements\Event as EventElement;
-use Solspace\Calendar\Library\DateHelper;
 
 use Carbon\Carbon;
 
@@ -51,7 +50,7 @@ class CalendarEvent extends Element
         Event::on(self::class, self::EVENT_MODIFY_FIELD_MAPPING_VALUE, function(ModifyFieldIntegrationValueEvent $event) {
             // Calendar expects dates as Carbon object, not DateTime
             if (in_array($event->integrationField->handle, ['startDate', 'endDate', 'until'])) {
-                $event->value = new Carbon($event->value->format('Y-m-d H:i:s') ?? 'now', DateHelper::UTC);
+                $event->value = new Carbon($event->value->format('Y-m-d H:i:s') ?? 'now', 'utc');
             }
         });
     }
@@ -69,7 +68,7 @@ class CalendarEvent extends Element
      */
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Map content provided by form submissions to create Solspace Calendar Event elements.');
+        return Craft::t('formie', 'Map content provided by form submissions to create {name} elements.', ['name' => static::displayName()]);
     }
 
     /**
@@ -101,18 +100,7 @@ class CalendarEvent extends Element
         $calendars = Calendar::getInstance()->calendars->getAllAllowedCalendars();
 
         foreach ($calendars as $calendar) {
-            $fields = [];
-
-            if ($fieldLayout = $calendar->getFieldLayout()) {
-                foreach ($fieldLayout->getCustomFields() as $field) {
-                    $fields[] = new IntegrationField([
-                        'handle' => $field->handle,
-                        'name' => $field->name,
-                        'type' => $this->getFieldTypeForField(get_class($field)),
-                        'required' => (bool)$field->required,
-                    ]);
-                }
-            }
+            $fields = $this->getFieldLayoutFields($calendar->getFieldLayout());
 
             $customFields[] = new IntegrationCollection([
                 'id' => $calendar->id,
@@ -252,6 +240,7 @@ class CalendarEvent extends Element
                         'handle' => $field->handle,
                         'name' => $field->name,
                         'type' => $this->getFieldTypeForField(get_class($field)),
+                        'sourceType' => get_class($field),
                     ]);
                 }
             }
@@ -274,7 +263,10 @@ class CalendarEvent extends Element
         try {
             $calendar = Calendar::getInstance()->calendars->getCalendarById($this->calendarId);
 
-            $event = $this->getElementForPayload(EventElement::class, $this->calendarId, $submission);
+            $event = $this->getElementForPayload(EventElement::class, $this->calendarId, $submission, [
+                'calendarId' => $calendar->id,
+            ]);
+
             $event->siteId = $submission->siteId;
             $event->calendarId = $calendar->id;
 
@@ -292,7 +284,7 @@ class CalendarEvent extends Element
                     }
                 } else if (in_array($eventFieldHandle, ['startDate', 'endDate', 'until'])) {
                     // Calendar expects dates as Carbon object, not DateTime
-                    $event->{$eventFieldHandle} = new Carbon($fieldValue->format('Y-m-d H:i:s') ?? 'now', DateHelper::UTC);
+                    $event->{$eventFieldHandle} = new Carbon($fieldValue->format('Y-m-d H:i:s') ?? 'now', 'utc');
                 } else {
                     $event->{$eventFieldHandle} = $fieldValue;
                 }

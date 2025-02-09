@@ -7,10 +7,14 @@ use verbb\formie\models\HtmlTag;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\base\SortableFieldInterface;
 use craft\helpers\ArrayHelper;
+use craft\helpers\Localization;
 use craft\helpers\StringHelper;
+use craft\i18n\Locale;
+use craft\validators\ArrayValidator;
 
-class Dropdown extends BaseOptionsField implements FormFieldInterface
+class Dropdown extends BaseOptionsField implements FormFieldInterface, SortableFieldInterface
 {
     // Static Methods
     // =========================================================================
@@ -38,10 +42,28 @@ class Dropdown extends BaseOptionsField implements FormFieldInterface
     public bool $multiple = false;
     public bool $multi = false;
     public bool $optgroups = true;
+    public bool $limitOptions = false;
+    public int|float|null $min = null;
+    public int|float|null $max = null;
 
 
     // Public Methods
     // =========================================================================
+
+    public function __construct(array $config = [])
+    {
+        // Normalize number settings
+        foreach (['min', 'max'] as $name) {
+            if (isset($config[$name]) && is_array($config[$name])) {
+                $config[$name] = Localization::normalizeNumber($config[$name]['value'], $config[$name]['locale']);
+            }
+        }
+
+        // Config normalization
+        self::normalizeConfig($config);
+
+        parent::__construct($config);
+    }
 
     /**
      * @inheritDoc
@@ -85,6 +107,42 @@ class Dropdown extends BaseOptionsField implements FormFieldInterface
         }
 
         return array_merge($options, $this->options);
+    }
+
+    public function getElementValidationRules(): array
+    {
+        $rules = parent::getElementValidationRules();
+
+        if ($this->limitOptions) {
+            $rules[] = [$this->handle, 'validateLimitOptions', 'skipOnEmpty' => false];
+        }
+
+        return $rules;
+    }
+
+    public function validateLimitOptions(ElementInterface $element): void
+    {
+        if ($this->limitOptions) {
+            $arrayValidator = new ArrayValidator([
+                'min' => $this->min ?: null,
+                'max' => $this->max ?: null,
+                'tooFew' => $this->min ? Craft::t('app', '{attribute} should contain at least {min, number} {min, plural, one{option} other{options}}.', [
+                    'attribute' => Craft::t('formie', $this->name),
+                    'min' => $this->min,
+                ]) : null,
+                'tooMany' => $this->max ? Craft::t('app', '{attribute} should contain at most {max, number} {max, plural, one{option} other{options}}.', [
+                    'attribute' => Craft::t('formie', $this->name),
+                    'max' => $this->max,
+                ]) : null,
+                'skipOnEmpty' => false,
+            ]);
+
+            $value = $element->getFieldValue($this->handle);
+
+            if (!$arrayValidator->validate($value, $error)) {
+                $element->addError($this->handle, $error);
+            }
+        }
     }
 
     /**
@@ -222,7 +280,49 @@ class Dropdown extends BaseOptionsField implements FormFieldInterface
                 'name' => 'errorMessage',
                 'if' => '$get(required).value',
             ]),
+            SchemaHelper::lightswitchField([
+                'label' => Craft::t('formie', 'Limit Options'),
+                'help' => Craft::t('formie', 'Whether to limit the options users can choose for this field.'),
+                'name' => 'limitOptions',
+                'if' => '$get(multiple).value',
+            ]),
+            [
+                '$el' => 'div',
+                'attrs' => [
+                    'class' => 'fui-row',
+                ],
+                'if' => '$get(limitOptions).value',
+                'children' => [
+                    [
+                        '$el' => 'div',
+                        'attrs' => [
+                            'class' => 'fui-col-6',
+                        ],
+                        'children' => [
+                            SchemaHelper::numberField([
+                                'label' => Craft::t('formie', 'Min Value'),
+                                'help' => Craft::t('formie', 'Set the minimum options that users must select.'),
+                                'name' => 'min',
+                            ]),
+                        ],
+                    ],
+                    [
+                        '$el' => 'div',
+                        'attrs' => [
+                            'class' => 'fui-col-6',
+                        ],
+                        'children' => [
+                            SchemaHelper::numberField([
+                                'label' => Craft::t('formie', 'Max Value'),
+                                'help' => Craft::t('formie', 'Set the maximum options that users must select.'),
+                                'name' => 'max',
+                            ]),
+                        ],
+                    ],
+                ],
+            ],
             SchemaHelper::prePopulate(),
+            SchemaHelper::includeInEmailField(),
         ];
     }
 
@@ -266,12 +366,10 @@ class Dropdown extends BaseOptionsField implements FormFieldInterface
         $errors = $context['errors'] ?? null;
 
         if ($key === 'fieldInput') {
-            $optionValue = $context['option']['value'] ?? '';
-            $id = $this->getHtmlId($form, StringHelper::toKebabCase($optionValue));
-            $dataId = $this->getHtmlDataId($form, StringHelper::toKebabCase($optionValue));
+            $optionValue = $this->getFieldInputOptionValue($context);
 
             return new HtmlTag('select', [
-                'id' => $id,
+                'id' => $this->getHtmlId($form, $optionValue),
                 'class' => [
                     'fui-select',
                     $errors ? 'fui-error' : false,
@@ -280,7 +378,7 @@ class Dropdown extends BaseOptionsField implements FormFieldInterface
                 'multiple' => $this->multiple ? true : null,
                 'required' => $this->required ? true : null,
                 'data' => [
-                    'fui-id' => $dataId,
+                    'fui-id' => $this->getHtmlDataId($form, $optionValue),
                     'fui-message' => Craft::t('formie', $this->errorMessage) ?: null,
                 ],
             ], $this->getInputAttributes());
@@ -293,9 +391,16 @@ class Dropdown extends BaseOptionsField implements FormFieldInterface
     // Protected Methods
     // =========================================================================
 
-    /**
-     * @inheritdoc
-     */
+    protected function defineRules(): array
+    {
+        $rules = parent::defineRules();
+
+        $rules[] = [['min', 'max'], 'number'];
+        $rules[] = [['max'], 'compare', 'compareAttribute' => 'min', 'operator' => '>='];
+
+        return $rules;
+    }
+
     protected function optionsSettingLabel(): string
     {
         return Craft::t('app', 'Dropdown Options');

@@ -38,7 +38,7 @@ class Mailjet extends EmailMarketing
      */
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Mailjet lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -224,6 +224,7 @@ class Mailjet extends EmailMarketing
                 'handle' => $field['Name'],
                 'name' => $field['Name'],
                 'type' => $this->_convertFieldType($field['Datatype']),
+                'sourceType' => $field['Datatype'],
                 'options' => $options,
             ]);
         }

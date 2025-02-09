@@ -19,6 +19,8 @@ class FriendlyCaptcha extends Captcha
     public ?string $handle = 'friendlyCaptcha';
     public ?string $secretKey = null;
     public ?string $siteKey = null;
+    public string $language = 'en';
+    public string $startMode = 'none';
 
 
     // Public Methods
@@ -39,17 +41,17 @@ class FriendlyCaptcha extends Captcha
      */
     public function getSettingsHtml(): ?string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/friendly-captcha/_plugin-settings', [
-            'integration' => $this,
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+        $variables['languageOptions'] = $this->_getLanguageOptions();
+
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/friendly-captcha/_plugin-settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/friendly-captcha/_form-settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/friendly-captcha/_form-settings', $variables);
     }
 
     /**
@@ -71,9 +73,11 @@ class FriendlyCaptcha extends Captcha
         $settings = [
             'siteKey' => App::parseEnv($this->siteKey),
             'formId' => $form->getFormId(),
+            'language' => $this->_getMatchedLanguageId() ?? 'en',
+            'startMode' => $this->startMode ?? 'none',
         ];
 
-        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/friendly-captcha.js', true);
+        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/friendly-captcha.js');
 
         return [
             'src' => $src,
@@ -85,7 +89,7 @@ class FriendlyCaptcha extends Captcha
     /**
      * @inheritDoc
      */
-    public function getRefreshJsVariables(Form $form, $page = null): array
+    public function getGqlVariables(Form $form, $page = null): array
     {
         return [
             'formId' => $form->getFormId(),
@@ -134,6 +138,98 @@ class FriendlyCaptcha extends Captcha
     {
         return [
             'siteKey' => $this->siteKey,
+            'language' => $this->language,
         ];
-    }    
+    }
+
+
+    // Private Methods
+    // =========================================================================
+
+    public function _getMatchedLanguageId()
+    {
+        if ($this->language && $this->language != 'auto') {
+            return $this->language;
+        }
+
+        $currentLanguageId = Craft::$app->getLocale()->getLanguageID();
+
+        // 700+ languages supported
+        $allCraftLocales = Craft::$app->getI18n()->getAllLocales();
+        $allCraftLanguageIds = ArrayHelper::getColumn($allCraftLocales, 'id');
+
+        // ~70 languages supported
+        $allRecaptchaLanguageIds = ArrayHelper::getColumn($this->_getLanguageOptions(), 'value');
+
+        // 65 matched language IDs
+        $matchedLanguageIds = array_intersect($allRecaptchaLanguageIds, $allCraftLanguageIds);
+
+        // If our current request Language ID matches a reCAPTCHA language ID, use it
+        if (in_array($currentLanguageId, $matchedLanguageIds, true)) {
+            return $currentLanguageId;
+        }
+
+        // If our current language ID has a more generic match, use it
+        if (str_contains($currentLanguageId, '-')) {
+            $parts = explode('-', $currentLanguageId);
+            $baseLanguageId = $parts['0'] ?? null;
+
+            if (in_array($baseLanguageId, $matchedLanguageIds, true)) {
+                return $baseLanguageId;
+            }
+        }
+
+        return null;
+    }
+
+    private function _getLanguageOptions(): array
+    {
+        $languages = [
+            'Auto' => 'auto',
+            'English' => 'en',
+            'French' => 'fr',
+            'German' => 'de',
+            'Italian' => 'it',
+            'Dutch' => 'nl',
+            'Portuguese' => 'pt',
+            'Spanish' => 'es',
+            'Catalan' => 'ca',
+            'Danish' => 'da',
+            'Japanese' => 'ja',
+            'Russian' => 'ru',
+            'Swedish' => 'sv',
+            'Greek' => 'el',
+            'Ukrainian' => 'uk',
+            'Bulgarian' => 'bg',
+            'Czech' => 'cs',
+            'Slovak' => 'sk',
+            'Norwegian' => 'no',
+            'Finnish' => 'fi',
+            'Latvian' => 'lv',
+            'Lithuanian' => 'lt',
+            'Polish' => 'pl',
+            'Estonian' => 'et',
+            'Croatian' => 'hr',
+            'Serbian' => 'sr',
+            'Slovenian' => 'sl',
+            'Hungarian' => 'hu',
+            'Romanian' => 'ro',
+            'Chinese (Simplified)' => 'zh',
+            'Chinese (Traditional)' => 'zh_TW',
+            'Vietnamese' => 'vi',
+            'Hebrew' => 'he',
+            'Thai' => 'th',
+        ];
+
+        $languageOptions = [];
+
+        foreach ($languages as $languageName => $languageCode) {
+            $languageOptions[] = [
+                'label' => Craft::t('formie', $languageName),
+                'value' => $languageCode,
+            ];
+        }
+
+        return $languageOptions;
+    }
 }

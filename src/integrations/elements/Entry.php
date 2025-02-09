@@ -37,6 +37,7 @@ class Entry extends Element
     // =========================================================================
 
     public ?int $entryTypeId = null;
+    public ?string $entryTypeUid = null;
     public int|array|null $defaultAuthorId = null;
     public ?bool $createDraft = null;
 
@@ -46,7 +47,7 @@ class Entry extends Element
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Map content provided by form submissions to create Entry elements.');
+        return Craft::t('formie', 'Map content provided by form submissions to create {name} elements.', ['name' => static::displayName()]);
     }
 
     /**
@@ -57,7 +58,7 @@ class Entry extends Element
         $rules = parent::defineRules();
 
         // Validate the following when saving form settings
-        $rules[] = [['entryTypeId', 'defaultAuthorId'], 'required', 'on' => [Integration::SCENARIO_FORM]];
+        $rules[] = [['entryTypeUid', 'defaultAuthorId'], 'required', 'on' => [Integration::SCENARIO_FORM]];
 
         // Find the field for the entry type - a little trickier due to nested in sections
         $fields = $this->_getEntryTypeSettings()->fields ?? [];
@@ -83,20 +84,10 @@ class Entry extends Element
             }
 
             foreach ($section->getEntryTypes() as $entryType) {
-                $fields = [];
-
-                foreach ($entryType->getFieldLayout()->getCustomFields() as $field) {
-                    $fields[] = new IntegrationField([
-                        'handle' => $field->handle,
-                        'name' => $field->name,
-                        'type' => $this->getFieldTypeForField(get_class($field)),
-                        'sourceType' => get_class($field),
-                        'required' => (bool)$field->required,
-                    ]);
-                }
+                $fields = $this->getFieldLayoutFields($entryType->getFieldLayout());
 
                 $customFields[$section->name][] = new IntegrationCollection([
-                    'id' => $entryType->id,
+                    'id' => $entryType->uid,
                     'name' => $entryType->name,
                     'fields' => $fields,
                 ]);
@@ -169,7 +160,9 @@ class Entry extends Element
             }
 
             foreach ($section->getEntryTypes() as $entryType) {
-                $attributes[$entryType->id] = [
+                $key = $entryType->uid;
+
+                $attributes[$key] = [
                     new IntegrationField([
                         'name' => Craft::t('app', 'ID'),
                         'handle' => 'id',
@@ -193,7 +186,7 @@ class Entry extends Element
                         continue;
                     }
 
-                    $attributes[$entryType->id][] = new IntegrationField([
+                    $attributes[$key][] = new IntegrationField([
                         'handle' => $field->handle,
                         'name' => $field->name,
                         'type' => $this->getFieldTypeForField(get_class($field)),
@@ -208,16 +201,20 @@ class Entry extends Element
 
     public function sendPayload(Submission $submission): IntegrationResponse|bool
     {
-        if (!$this->entryTypeId) {
-            Integration::error($this, Craft::t('formie', 'Unable to save element integration. No `entryTypeId`.'), true);
+        if (!$this->entryTypeUid) {
+            Integration::error($this, Craft::t('formie', 'Unable to save element integration. No `entryTypeUid`.'), true);
 
             return false;
         }
 
         try {
-            $entryType = Craft::$app->getSections()->getEntryTypeById($this->entryTypeId);
+            $entryType = Craft::$app->getSections()->getEntryTypeByUid($this->entryTypeUid);
 
-            $entry = $this->getElementForPayload(EntryElement::class, $this->entryTypeId, $submission);
+            $entry = $this->getElementForPayload(EntryElement::class, $entryType->id, $submission, [
+                'typeId' => $entryType->id,
+                'sectionId' => $entryType->sectionId,
+            ]);
+
             $entry->siteId = $submission->siteId;
             $entry->typeId = $entryType->id;
             $entry->sectionId = $entryType->sectionId;
@@ -235,8 +232,8 @@ class Entry extends Element
 
             foreach ($attributeValues as $entryFieldHandle => $fieldValue) {
                 if ($entryFieldHandle === 'author') {
-                    if (isset($fieldValue[0])) {
-                        $entry->authorId = $fieldValue[0] ?? null;
+                    if (isset($fieldValue[0]) && $fieldValue[0]) {
+                        $entry->authorId = (int)$fieldValue[0];
                     }
                 } else {
                     $entry->{$entryFieldHandle} = $fieldValue;
@@ -253,6 +250,22 @@ class Entry extends Element
 
             $entry->setFieldValues($fieldValues);
             $entry->updateTitle();
+
+            // If we're not mapping to the status, ensure it's inherited from the section's default
+            $statusAttributeMapping = $this->attributeMapping['enabled'] ?? '';
+
+            if ($statusAttributeMapping === '') {
+                $siteSettings = ArrayHelper::firstWhere($entryType->section->getSiteSettings(), 'siteId', $entry->siteId);
+                $enabled = $siteSettings->enabledByDefault;
+
+                if (Craft::$app->getIsMultiSite() && count($entry->getSupportedSites()) > 1) {
+                    $entry->enabled = true;
+                    $entry->setEnabledForSite($enabled);
+                } else {
+                    $entry->enabled = $enabled;
+                    $entry->setEnabledForSite(true);
+                }
+            }
 
             // Although empty, because we pass via reference, we need variables
             $endpoint = '';
@@ -353,7 +366,7 @@ class Entry extends Element
         $entryTypes = $this->getFormSettingValue('elements');
 
         foreach ($entryTypes as $key => $entryType) {
-            if ($collection = ArrayHelper::firstWhere($entryType, 'id', $this->entryTypeId)) {
+            if ($collection = ArrayHelper::firstWhere($entryType, 'id', $this->entryTypeUid)) {
                 return $collection;
             }
         }

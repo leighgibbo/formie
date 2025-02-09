@@ -96,7 +96,7 @@ class SugarCrm extends Crm
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Manage your SugarCRM customers by providing important information on their conversion on your site.');
+        return Craft::t('formie', 'Manage your {name} customers by providing important information on their conversion on your site.', ['name' => static::displayName()]);
     }
 
     /**
@@ -146,52 +146,53 @@ class SugarCrm extends Crm
         $settings = [];
 
         try {
-            $response = $this->request('GET', 'metadata', [
-                'query' => [
-                    'type_filter' => 'modules',
-                    'module_filter' => 'Contacts',
-                ],
-            ]);
+            if ($this->mapToContact) {
+                $response = $this->request('GET', 'metadata', [
+                    'query' => [
+                        'type_filter' => 'modules',
+                        'module_filter' => 'Contacts',
+                    ],
+                ]);
 
-            $fields = $response['modules']['Contacts']['fields'] ?? [];
-            $contactFields = $this->_getCustomFields($fields);
+                $fields = $response['modules']['Contacts']['fields'] ?? [];
+                $settings['contact'] = $this->_getCustomFields($fields);
+            }
 
-            $response = $this->request('GET', 'metadata', [
-                'query' => [
-                    'type_filter' => 'modules',
-                    'module_filter' => 'Leads',
-                ],
-            ]);
+            if ($this->mapToLead) {
+                $response = $this->request('GET', 'metadata', [
+                    'query' => [
+                        'type_filter' => 'modules',
+                        'module_filter' => 'Leads',
+                    ],
+                ]);
 
-            $fields = $response['modules']['Leads']['fields'] ?? [];
-            $leadFields = $this->_getCustomFields($fields);
+                $fields = $response['modules']['Leads']['fields'] ?? [];
+                $settings['lead'] = $this->_getCustomFields($fields);
+            }
 
-            $response = $this->request('GET', 'metadata', [
-                'query' => [
-                    'type_filter' => 'modules',
-                    'module_filter' => 'Opportunities',
-                ],
-            ]);
+            if ($this->mapToOpportunity) {
+                $response = $this->request('GET', 'metadata', [
+                    'query' => [
+                        'type_filter' => 'modules',
+                        'module_filter' => 'Opportunities',
+                    ],
+                ]);
 
-            $fields = $response['modules']['Opportunities']['fields'] ?? [];
-            $opportunityFields = $this->_getCustomFields($fields);
+                $fields = $response['modules']['Opportunities']['fields'] ?? [];
+                $settings['opportunity'] = $this->_getCustomFields($fields);
+            }
 
-            $response = $this->request('GET', 'metadata', [
-                'query' => [
-                    'type_filter' => 'modules',
-                    'module_filter' => 'Accounts',
-                ],
-            ]);
+            if ($this->mapToAccount) {
+                $response = $this->request('GET', 'metadata', [
+                    'query' => [
+                        'type_filter' => 'modules',
+                        'module_filter' => 'Accounts',
+                    ],
+                ]);
 
-            $fields = $response['modules']['Accounts']['fields'] ?? [];
-            $accountFields = $this->_getCustomFields($fields);
-
-            $settings = [
-                'contact' => $contactFields,
-                'lead' => $leadFields,
-                'opportunity' => $opportunityFields,
-                'account' => $accountFields,
-            ];
+                $fields = $response['modules']['Accounts']['fields'] ?? [];
+                $settings['account'] = $this->_getCustomFields($fields);
+            }
         } catch (Throwable $e) {
             Integration::apiError($this, $e);
         }
@@ -305,7 +306,9 @@ class SugarCrm extends Crm
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::apiError($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $apiDomain = rtrim(App::parseEnv($this->apiDomain), '/');
@@ -391,10 +394,19 @@ class SugarCrm extends Crm
         $supportedFields = [
             'text',
             'varchar',
+            'char',
+            'enum',
+            'multienum',
             'phone',
             'exact',
+            'url',
+            'link',
             'email',
             'name',
+            'yim',
+            'int',
+            'bool',
+            'time',
             'date',
             'datetime',
         ];
@@ -418,6 +430,7 @@ class SugarCrm extends Crm
                 'handle' => $key,
                 'name' => $name,
                 'type' => $this->_convertFieldType($type),
+                'sourceType' => $type,
             ]);
         }
 

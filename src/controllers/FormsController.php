@@ -14,6 +14,7 @@ use craft\db\Query;
 use craft\helpers\ArrayHelper;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Json;
+use craft\helpers\Session;
 use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
 use craft\models\Site;
@@ -63,8 +64,9 @@ class FormsController extends Controller
 
         $formHandles = ArrayHelper::getColumn(Form::find()->all(), 'handle');
         $stencilArray = Formie::$plugin->getStencils()->getStencilArray();
+        $applyStencilId = $this->request->getParam('applyStencilId');
 
-        $variables = compact('formHandles', 'form', 'stencilArray');
+        $variables = compact('formHandles', 'form', 'stencilArray', 'applyStencilId');
 
         if (!$variables['form']) {
             $variables['form'] = new Form();
@@ -355,7 +357,7 @@ class FormsController extends Controller
 
         if ($this->request->getAcceptsJson()) {
             $url = $this->request->getValidatedBodyParam('redirect');
-            $url = Craft::$app->getView()->renderObjectTemplate($url, $form);
+            $url = Formie::$plugin->getTemplates()->renderObjectTemplate($url, $form);
 
             return $this->asJson([
                 'success' => false,
@@ -368,6 +370,9 @@ class FormsController extends Controller
 
     public function actionRefreshTokens(): Response
     {
+        // Ensure that the session has started, just in case
+        Craft::$app->getSession()->open();
+
         $params = [
             'csrf' => [
                 'param' => $this->request->csrfParam,
@@ -388,6 +393,9 @@ class FormsController extends Controller
                 $params['captchas'][$captcha->handle] = $jsVariables;
             }
         }
+
+        // Prevent the browser from caching the response
+        $this->response->setNoCacheHeaders();
 
         return $this->asJson($params);
     }

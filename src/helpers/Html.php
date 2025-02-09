@@ -70,12 +70,35 @@ class Html extends CraftHtmlHelper
         $merged['aria'] = array_merge($aria, $extraAria);
 
         // Filter just `null` and `false` values
-        return ArrayHelper::filterEmptyValues($merged); 
+        return ArrayHelper::filterNullFalseValues($merged); 
     }
 
     public static function getFieldClassKey($class): string
     {
-        return StringHelper::toCamelCase(StringHelper::toKebabCase($class::displayName()));
+        $className = StringHelper::toCamelCase(StringHelper::toKebabCase($class::className()));
+
+        // TODO: remove this extra handling for the next version, but will be a breaking change
+        if ($className === 'radio') {
+            return 'radioButtons';
+        }
+
+        if ($className === 'date') {
+            return 'dateTime';
+        }
+
+        if ($className === 'email') {
+            return 'emailAddress';
+        }
+
+        if ($className === 'hidden') {
+            return 'hiddenField';
+        }
+
+        if ($className === 'phone') {
+            return 'phoneNumber';
+        }
+
+        return $className;
     }
 
     public static function getFieldClassHandles(): array
@@ -142,6 +165,21 @@ class Html extends CraftHtmlHelper
         }
 
         return $mergedConfigs;
+    }
+
+    public static function getTagAttributes(array $attributes): array
+    {
+        $tagAttributes = [];
+        $attributeString = trim(static::renderTagAttributes($attributes));
+
+        $pattern = '/\b([^\s=]+)(?:=("[^"]*"|\'[^\']*\'|[^"\s\']*))?/';
+        preg_match_all($pattern, $attributeString, $matches, PREG_SET_ORDER);
+
+        foreach ($matches as $match) {
+            $tagAttributes[$match[1]] = isset($match[2]) ? trim($match[2], "\"'") : true;
+        }
+
+        return $tagAttributes;
     }
 
 

@@ -195,9 +195,9 @@ class Formie
      *
      * @return Markup|null
      */
-    public function renderCss(bool $inline = false): ?Markup
+    public function renderCss(bool $inline = false, array $renderOptions = []): ?Markup
     {
-        return FormiePlugin::$plugin->getRendering()->renderCss($inline);
+        return FormiePlugin::$plugin->getRendering()->renderCss($inline, $renderOptions);
     }
 
     /**
@@ -205,9 +205,9 @@ class Formie
      *
      * @return Markup|null
      */
-    public function renderJs(bool $inline = false): ?Markup
+    public function renderJs(bool $inline = false, array $renderOptions = []): ?Markup
     {
-        return FormiePlugin::$plugin->getRendering()->renderJs($inline);
+        return FormiePlugin::$plugin->getRendering()->renderJs($inline, $renderOptions);
     }
 
     /**
@@ -358,7 +358,8 @@ class Formie
         $plugins = [];
 
         if (FormiePlugin::$plugin->getService()->isPluginInstalledAndEnabled('freeform')) {
-            $plugins['migrate/freeform'] = ['title' => Craft::t('formie', 'Freeform')];
+            $plugins['migrate/freeform4'] = ['title' => Craft::t('formie', 'Freeform 4')];
+            $plugins['migrate/freeform5'] = ['title' => Craft::t('formie', 'Freeform 5')];
         }
 
         if (FormiePlugin::$plugin->getService()->isPluginInstalledAndEnabled('sprout-forms')) {

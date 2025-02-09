@@ -42,7 +42,7 @@ class CampaignMonitor extends EmailMarketing
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your Campaign Monitor lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -93,11 +93,11 @@ class CampaignMonitor extends EmailMarketing
                             'options' => [
                                 [
                                     'label' =>  Craft::t('formie', 'Yes'),
-                                    'value' => 'Yes',
+                                    'value' => true,
                                 ],
                                 [
                                     'label' =>  Craft::t('formie', 'No'),
-                                    'value' => 'No',
+                                    'value' => false,
                                 ],
                             ],
                         ],
@@ -111,11 +111,11 @@ class CampaignMonitor extends EmailMarketing
                             'options' => [
                                 [
                                     'label' =>  Craft::t('formie', 'Yes'),
-                                    'value' => 'Yes',
+                                    'value' => true,
                                 ],
                                 [
                                     'label' =>  Craft::t('formie', 'No'),
-                                    'value' => 'No',
+                                    'value' => false,
                                 ],
                             ],
                         ],
@@ -267,6 +267,7 @@ class CampaignMonitor extends EmailMarketing
                 'handle' => str_replace(['[', ']'], '', $field['Key']),
                 'name' => $field['FieldName'],
                 'type' => $this->_convertFieldType($field['DataType']),
+                'sourceType' => $field['DataType'],
             ]);
         }
 

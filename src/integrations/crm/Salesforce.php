@@ -5,6 +5,7 @@ use verbb\formie\Formie;
 use verbb\formie\base\Crm;
 use verbb\formie\base\Integration;
 use verbb\formie\elements\Submission;
+use verbb\formie\events\ModifyFieldIntegrationValueEvent;
 use verbb\formie\models\IntegrationField;
 use verbb\formie\models\IntegrationFormSettings;
 
@@ -15,6 +16,9 @@ use craft\helpers\DateTimeHelper;
 use craft\helpers\Json;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
+
+use yii\base\Event;
 
 use DateTime;
 use Throwable;
@@ -68,6 +72,22 @@ class Salesforce extends Crm
 
     // Public Methods
     // =========================================================================
+
+    public function init(): void
+    {
+        parent::init();
+
+        Event::on(self::class, self::EVENT_MODIFY_FIELD_MAPPING_VALUE, function(ModifyFieldIntegrationValueEvent $event) {
+            // Salesforce need DateTime to be in standard format.
+            if ($event->integrationField->getType() === IntegrationField::TYPE_DATETIME) {
+                if ($event->rawValue instanceof DateTime) {
+                    $date = clone $event->rawValue;
+
+                    $event->value = $date->format('Y-m-d\TH:i:s');
+                }
+            }
+        });
+    }
 
     public function getAuthorizeUrl(): string
     {
@@ -171,7 +191,7 @@ class Salesforce extends Crm
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Manage your Salesforce customers by providing important information on their conversion on your site.');
+        return Craft::t('formie', 'Manage your {name} customers by providing important information on their conversion on your site.', ['name' => static::displayName()]);
     }
 
     public function extraAttributes(): array
@@ -248,37 +268,39 @@ class Salesforce extends Crm
             }
 
             // Get Contact fields
-            $response = $this->request('GET', 'sobjects/Contact/describe');
-            $fields = $response['fields'] ?? [];
-            $contactFields = $this->_getCustomFields($fields);
+            if ($this->mapToContact) {
+                $response = $this->request('GET', 'sobjects/Contact/describe');
+                $fields = $response['fields'] ?? [];
+                $settings['contact'] = $this->_getCustomFields($fields);
+            }
 
             // Get Lead fields
-            $response = $this->request('GET', 'sobjects/Lead/describe');
-            $fields = $response['fields'] ?? [];
-            $leadFields = $this->_getCustomFields($fields);
+            if ($this->mapToLead) {
+                $response = $this->request('GET', 'sobjects/Lead/describe');
+                $fields = $response['fields'] ?? [];
+                $settings['lead'] = $this->_getCustomFields($fields);
+            }
 
             // Get Opportunity fields
-            $response = $this->request('GET', 'sobjects/Opportunity/describe');
-            $fields = $response['fields'] ?? [];
-            $opportunityFields = $this->_getCustomFields($fields);
+            if ($this->mapToOpportunity) {
+                $response = $this->request('GET', 'sobjects/Opportunity/describe');
+                $fields = $response['fields'] ?? [];
+                $settings['opportunity'] = $this->_getCustomFields($fields);
+            }
 
             // Get Account fields
-            $response = $this->request('GET', 'sobjects/Account/describe');
-            $fields = $response['fields'] ?? [];
-            $accountFields = $this->_getCustomFields($fields);
+            if ($this->mapToAccount) {
+                $response = $this->request('GET', 'sobjects/Account/describe');
+                $fields = $response['fields'] ?? [];
+                $settings['account'] = $this->_getCustomFields($fields);
+            }
 
             // Get Case fields
-            $response = $this->request('GET', 'sobjects/Case/describe');
-            $fields = $response['fields'] ?? [];
-            $caseFields = $this->_getCustomFields($fields);
-
-            $settings = [
-                'contact' => $contactFields,
-                'lead' => $leadFields,
-                'opportunity' => $opportunityFields,
-                'account' => $accountFields,
-                'case' => $caseFields,
-            ];
+            if ($this->mapToCase) {
+                $response = $this->request('GET', 'sobjects/Case/describe');
+                $fields = $response['fields'] ?? [];
+                $settings['case'] = $this->_getCustomFields($fields, ['IsClosedOnCreate']);
+            }
         } catch (Throwable $e) {
             Integration::apiError($this, $e);
         }
@@ -419,47 +441,50 @@ class Salesforce extends Crm
                         return false;
                     }
                 } catch (Throwable $e) {
-                    $taskCreated = false;
                     Integration::apiError($this, $e, false);
 
+                    $taskCreated = false;
+
                     // Check if we should enable tasks to be created for duplicates
-                    $response = Json::decode((string)$e->getResponse()->getBody());
-                    $responseCode = $response[0]['errorCode'] ?? '';
+                    if ($e instanceof RequestException && $e->getResponse()) {
+                        $response = Json::decode((string)$e->getResponse()->getBody());
+                        $responseCode = $response[0]['errorCode'] ?? '';
 
-                    // Check if a duplicate lead and if we should create a task instead.
-                    if ($responseCode === 'DUPLICATES_DETECTED') {
-                        Integration::log($this, 'Duplicate lead found.', false);
+                        // Check if a duplicate lead and if we should create a task instead.
+                        if ($responseCode === 'DUPLICATES_DETECTED') {
+                            Integration::log($this, 'Duplicate lead found.', false);
 
-                        if ($this->duplicateLeadTask) {
-                            Integration::log($this, 'Attempting to create task for duplicate lead.', false);
+                            if ($this->duplicateLeadTask) {
+                                Integration::log($this, 'Attempting to create task for duplicate lead.', false);
 
-                            $taskPayload = [
-                                'Subject' => $this->duplicateLeadTaskSubject,
-                                'WhoId' => $contactId,
-                                'Description' => '',
-                            ];
+                                $taskPayload = [
+                                    'Subject' => $this->duplicateLeadTaskSubject,
+                                    'WhoId' => $contactId,
+                                    'Description' => '',
+                                ];
 
-                            foreach ($leadPayload as $key => $item) {
-                                $taskPayload['Description'] .= $key . ': ' . $item . "\n";
-                            }
-
-                            try {
-                                $response = $this->deliverPayload($submission, 'sobjects/Task', $taskPayload);
-
-                                if ($response === false) {
-                                    return true;
+                                foreach ($leadPayload as $key => $item) {
+                                    $taskPayload['Description'] .= $key . ': ' . $item . "\n";
                                 }
 
-                                $taskCreated = true;
+                                try {
+                                    $response = $this->deliverPayload($submission, 'sobjects/Task', $taskPayload);
 
-                                Integration::log($this, Craft::t('formie', 'Response from task-creation {response}. Sent payload {payload}', [
-                                    'response' => Json::encode($response),
-                                    'payload' => Json::encode($taskPayload),
-                                ]));
-                            } catch (Throwable $e) {
-                                Integration::apiError($this, $e);
+                                    if ($response === false) {
+                                        return true;
+                                    }
 
-                                return false;
+                                    $taskCreated = true;
+
+                                    Integration::log($this, Craft::t('formie', 'Response from task-creation {response}. Sent payload {payload}', [
+                                        'response' => Json::encode($response),
+                                        'payload' => Json::encode($taskPayload),
+                                    ]));
+                                } catch (Throwable $e) {
+                                    Integration::apiError($this, $e);
+
+                                    return false;
+                                }
                             }
                         }
                     }
@@ -559,7 +584,9 @@ class Salesforce extends Crm
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::apiError($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $this->_client = Craft::createGuzzleClient([
@@ -692,6 +719,7 @@ class Salesforce extends Crm
                 'handle' => $field['name'],
                 'name' => $field['label'],
                 'type' => $this->_convertFieldType($field['type']),
+                'sourceType' => $field['type'],
                 'required' => !$field['nillable'],
                 'options' => $options,
             ]);

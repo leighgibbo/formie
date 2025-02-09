@@ -41,7 +41,7 @@ class AddressFinder extends AddressProvider
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Use [Address Finder](https://addressfinder.com.au/) to suggest Australian and New Zealand addresses, for address fields.');
+        return Craft::t('formie', 'Use {link} to suggest Australian and New Zealand addresses, for address fields.', ['link' => '[Address Finder](https://addressfinder.com.au/)']);
     }
 
     /**
@@ -72,7 +72,7 @@ class AddressFinder extends AddressProvider
         ];
 
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/address-providers/address-finder.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/address-providers/address-finder.js'),
             'module' => 'FormieAddressFinder',
             'settings' => $settings,
         ];

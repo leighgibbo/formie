@@ -4,6 +4,7 @@ namespace verbb\formie\base;
 use verbb\formie\Formie;
 use verbb\formie\elements\NestedFieldRow;
 use verbb\formie\elements\db\NestedFieldRowQuery;
+use verbb\formie\fields\formfields\FileUpload;
 use verbb\formie\fields\formfields\Group;
 use verbb\formie\models\FieldLayout;
 
@@ -719,11 +720,12 @@ trait NestedFieldTrait
             $subFieldHandle = array_shift($subFieldKey);
             $subFieldKey = implode('.', $subFieldKey);
 
-            $row = $value->one();
-            $subField = $row->getFieldByHandle($subFieldHandle);
-            $subValue = $row->getFieldValue($subFieldHandle);
+            if ($row = $value->one()) {
+                $subField = $row->getFieldByHandle($subFieldHandle);
+                $subValue = $row->getFieldValue($subFieldHandle);
 
-            return $subField->getValueForIntegration($subValue, $integrationField, $integration, $row, $subFieldKey);
+                return $subField->getValueForIntegration($subValue, $integrationField, $integration, $row, $subFieldKey);
+            }
         }
 
         // Fetch the default handling
@@ -818,6 +820,19 @@ trait NestedFieldTrait
             if (isset($oldRowsById[$rowId])) {
                 $row = $oldRowsById[$rowId];
                 $row->dirty = !empty($rowData);
+
+                // Special-case for File Upload fields being the only field in the field layout, they won't be part of the payload
+                // as their content is part of uploaded file data instead. We need the block to be marked as always dirty to trigger 
+                // the files to be uploaded. This is only prevalent for existing blocks, not new ones.
+                if ($fieldLayout = $this->getFieldLayout()) {
+                    foreach ($fieldLayout->getCustomFields() as $field) {
+                        if ($field instanceof FileUpload) {
+                            $row->dirty = true;
+
+                            break;
+                        }
+                    }
+                }
             } else {
                 $row = new NestedFieldRow();
                 $row->fieldId = $this->id;

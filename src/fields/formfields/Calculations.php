@@ -78,7 +78,7 @@ class Calculations extends FormField implements PreviewableFieldInterface
     public function getFrontEndJsModules(): ?array
     {
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/calculations.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/calculations.js'),
             'module' => 'FormieCalculations',
             'settings' => [
                 'formula' => $this->getFormula(),
@@ -176,6 +176,7 @@ class Calculations extends FormField implements PreviewableFieldInterface
                 'name' => 'errorMessage',
                 'if' => '$get(required).value',
             ]),
+            SchemaHelper::includeInEmailField(),
             SchemaHelper::matchField([
                 'fieldTypes' => [self::class],
             ]),

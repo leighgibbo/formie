@@ -26,7 +26,7 @@ export class FormieRepeater {
         if (this.$addButton) {
             // Add the click event, but use a namespace so we can track these dynamically-added items
             this.form.addEventListener(this.$addButton, eventKey('click'), (e) => {
-                this.addRow(e);
+                this.addRow();
             });
         }
 
@@ -84,8 +84,7 @@ export class FormieRepeater {
         }
     }
 
-    addRow(e) {
-        const button = e.target;
+    addRow() {
         const handle = this.$addButton.getAttribute('data-add-repeater-row');
         const template = document.querySelector(`[data-repeater-template="${handle}"]`);
         const numRows = this.getNumRows();

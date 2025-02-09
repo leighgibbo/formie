@@ -1,6 +1,8 @@
 <?php
 namespace verbb\formie\base;
 
+use verbb\formie\events\ModifyElementFieldsEvent;
+use verbb\formie\events\ModifyElementMatchEvent;
 use verbb\formie\events\ModifyFieldIntegrationValueEvent;
 use verbb\formie\fields\formfields\MultiLineText;
 use verbb\formie\fields\formfields\SingleLineText;
@@ -14,6 +16,7 @@ use craft\helpers\ArrayHelper;
 use craft\helpers\Html;
 use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
+use craft\models\FieldLayout;
 
 use yii\base\Event;
 use yii\helpers\Markdown;
@@ -23,6 +26,13 @@ use DateTimeZone;
 
 abstract class Element extends Integration
 {
+    // Constants
+    // =========================================================================
+
+    public const EVENT_MODIFY_ELEMENT_FIELDS = 'modifyElementFields';
+    public const EVENT_MODIFY_ELEMENT_MATCH = 'modifyElementMatch';
+
+
     // Static Methods
     // =========================================================================
 
@@ -58,7 +68,9 @@ abstract class Element extends Integration
         Event::on(self::class, self::EVENT_MODIFY_FIELD_MAPPING_VALUE, function(ModifyFieldIntegrationValueEvent $event) {
             // For rich-text enabled fields, retain the HTML (safely)
             if ($event->field instanceof MultiLineText || $event->field instanceof SingleLineText) {
-                $event->value = StringHelper::htmlDecode($event->value, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401);
+                if (is_string($event->value)) {
+                    $event->value = StringHelper::htmlDecode($event->value, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401);
+                }
             }
 
             // For Date fields as a destination, convert to UTC from system time
@@ -94,7 +106,7 @@ abstract class Element extends Integration
     {
         $handle = $this->getClassHandle();
 
-        return Craft::$app->getAssetManager()->getPublishedUrl("@verbb/formie/web/assets/cp/dist/img/elements/{$handle}.svg", true);
+        return Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/cp/dist/', true, "img/elements/{$handle}.svg");
     }
 
     /**
@@ -103,20 +115,17 @@ abstract class Element extends Integration
     public function getSettingsHtml(): ?string
     {
         $handle = $this->getClassHandle();
+        $variables = $this->getSettingsHtmlVariables();
 
-        return Craft::$app->getView()->renderTemplate("formie/integrations/elements/{$handle}/_plugin-settings", [
-            'integration' => $this,
-        ]);
+        return Craft::$app->getView()->renderTemplate("formie/integrations/elements/{$handle}/_plugin-settings", $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
         $handle = $this->getClassHandle();
+        $variables = $this->getFormSettingsHtmlVariables($form);
 
-        return Craft::$app->getView()->renderTemplate("formie/integrations/elements/{$handle}/_form-settings", [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        return Craft::$app->getView()->renderTemplate("formie/integrations/elements/{$handle}/_form-settings", $variables);
     }
 
     public function getCpEditUrl(): string
@@ -203,9 +212,59 @@ abstract class Element extends Integration
         return false;
     }
 
-    protected function getElementForPayload($elementType, $identifier, $submission)
+    protected function getFieldLayoutFields(?FieldLayout $fieldLayout): array
+    {
+        $fields = [];
+
+        if ($fieldLayout) {
+            foreach ($fieldLayout->getCustomFields() as $field) {
+                $fieldClass = get_class($field);
+
+                $fields[] = new IntegrationField([
+                    'handle' => $field->handle,
+                    'name' => $field->name,
+                    'type' => $this->getFieldTypeForField($fieldClass),
+                    'sourceType' => $fieldClass,
+                    'required' => (bool)$field->required,
+                ]);
+            }
+        }
+
+        // Fire a 'modifyElementFields' event
+        $event = new ModifyElementFieldsEvent([
+            'fieldLayout' => $fieldLayout,
+            'fields' => $fields,
+        ]);
+        $this->trigger(self::EVENT_MODIFY_ELEMENT_FIELDS, $event);
+
+        return $event->fields;
+    }
+
+    protected function getElementForPayload($elementType, $identifier, $submission, array $criteria = [])
+    {
+        $element = $this->defineElementForPayload($elementType, $identifier, $submission, $criteria);
+
+        // Fire a 'modifyElementMatch' event
+        $event = new ModifyElementMatchEvent([
+            'elementType' => $elementType,
+            'identifier' => $identifier,
+            'submission' => $submission,
+            'criteria' => $criteria,
+            'element' => $element,
+        ]);
+        $this->trigger(self::EVENT_MODIFY_ELEMENT_MATCH, $event);
+
+        return $event->element;
+    }
+
+    protected function defineElementForPayload($elementType, $identifier, $submission, array $criteria = [])
     {
         $element = new $elementType();
+
+        // If we're not wanting to update an element, no need to proceed finding one.
+        if (!$this->updateElement) {
+            return $element;
+        }
 
         // Pick from the available update attributes, depending on the identifier picked (e.g. `entryTypeId`, etc).
         $updateAttributes = $this->getUpdateAttributes()[$identifier] ?? [];
@@ -214,10 +273,18 @@ abstract class Element extends Integration
         $updateElementValues = $this->getFieldMappingValues($submission, $this->updateElementMapping, $updateAttributes);
         $updateElementValues = array_filter($updateElementValues);
 
+        // Something must be mapped in order to find an element, otherwise it'll just find any element for the criteria
+        if (!$updateElementValues) {
+            return $element;
+        }
+
+        // Merge in any extra criteria supplied by the element integration class
+        $updateElementValues = array_merge($updateElementValues, $criteria);
+
         if ($updateElementValues) {
             $query = $elementType::find($updateElementValues);
 
-            // Fina elements of any status, like disabled
+            // Find elements of any status, like disabled
             $query->status(null);
 
             Craft::configure($query, $updateElementValues);

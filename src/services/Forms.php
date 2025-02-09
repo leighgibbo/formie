@@ -8,6 +8,7 @@ use verbb\formie\base\NestedFieldTrait;
 use verbb\formie\base\FormField;
 use verbb\formie\elements\Form;
 use verbb\formie\helpers\HandleHelper;
+use verbb\formie\helpers\Plugin;
 use verbb\formie\migrations\CreateFormContentTable;
 use verbb\formie\models\FieldLayout;
 use verbb\formie\models\FieldLayoutPage;
@@ -67,6 +68,11 @@ class Forms extends Component
         return Form::find()->handle($handle)->siteId($siteId)->one();
     }
 
+    public function getFormByUid(string $uid, int $siteId = null): ?Form
+    {
+        return Form::find()->uid($uid)->siteId($siteId)->one();
+    }
+
     /**
      * Returns all active forms.
      *
@@ -104,7 +110,7 @@ class Forms extends Component
 
         // Make sure it's got a UUID
         if ($isNewForm) {
-            if (empty($this->uid)) {
+            if (empty($form->uid)) {
                 $form->uid = StringHelper::UUID();
             }
         } else if (!$form->uid) {
@@ -260,12 +266,22 @@ class Forms extends Component
         } catch (Throwable $e) {
             $transaction->rollBack();
 
-            $form->addErrors(['general' => $e->getMessage()]);
+            $error = Craft::t('app', '{message} {file}:{line}', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            $form->addErrors(['general' => $error]);
             
-            Formie::error('Unable to save form “' . $form->handle . '”: ' . $e->getMessage());
+            Formie::error('Unable to save form “' . $form->handle . '”: ' . $error);
 
             return false;
         }
+
+        // To prepare for Formie 3, where field layouts have been revampled, it's important to maintain a copy
+        // for the upgrade, because Craft's migrations will blow the table away, and we need it before that.
+        Plugin::saveFormie3Layout($form);
 
         return true;
     }

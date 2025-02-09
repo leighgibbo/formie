@@ -55,6 +55,9 @@ class MicrosoftDynamics365 extends Crm
     public ?string $clientId = null;
     public ?string $clientSecret = null;
     public ?string $apiDomain = null;
+    public bool $impersonateUser = false;
+    public string $impersonateHeader = 'CallerObjectId';
+    public ?string $impersonateUserId = null;
     public ?string $apiVersion = 'v9.0';
     public bool $mapToContact = false;
     public bool $mapToLead = false;
@@ -73,6 +76,11 @@ class MicrosoftDynamics365 extends Crm
 
     // Public Methods
     // =========================================================================
+
+    public function getClassHandle()
+    {
+        return 'microsoft-dynamics-365';
+    }
 
     public function getClientId(): string
     {
@@ -110,7 +118,7 @@ class MicrosoftDynamics365 extends Crm
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Manage your Microsoft Dynamics 365 customers by providing important information on their conversion on your site.');
+        return Craft::t('formie', 'Manage your {name} customers by providing important information on their conversion on your site.', ['name' => static::displayName()]);
     }
 
     /**
@@ -159,6 +167,10 @@ class MicrosoftDynamics365 extends Crm
             }, 'on' => [Integration::SCENARIO_FORM]
         ];
 
+        $rules[] = ['impersonateUserId', 'required', 'when' => function($model) {
+            return $model->impersonateUser;
+        }];
+
         return $rules;
     }
 
@@ -167,19 +179,25 @@ class MicrosoftDynamics365 extends Crm
         $settings = [];
 
         try {
-            $contactFields = $this->_getEntityFields('contact');
-            $leadFields = $this->_getEntityFields('lead');
-            $opportunityFields = $this->_getEntityFields('opportunity');
-            $accountFields = $this->_getEntityFields('account');
-            $incidentFields = $this->_getEntityFields('incident');
+            if ($this->mapToContact) {
+                $settings['contact'] = $this->_getEntityFields('contact');
+            }
 
-            $settings = [
-                'contact' => $contactFields,
-                'lead' => $leadFields,
-                'opportunity' => $opportunityFields,
-                'account' => $accountFields,
-                'incident' => $incidentFields,
-            ];
+            if ($this->mapToLead) {
+                $settings['lead'] = $this->_getEntityFields('lead');
+            }
+
+            if ($this->mapToOpportunity) {
+                $settings['opportunity'] = $this->_getEntityFields('opportunity');
+            }
+
+            if ($this->mapToAccount) {
+                $settings['account'] = $this->_getEntityFields('account');
+            }
+
+            if ($this->mapToIncident) {
+                $settings['incident'] = $this->_getEntityFields('incident');
+            }
         } catch (Throwable $e) {
             Integration::apiError($this, $e);
         }
@@ -366,6 +384,11 @@ class MicrosoftDynamics365 extends Crm
             $options['headers']['Prefer'] = 'return=representation';
         }
 
+        // Impersonate user when creating records if enabled
+        if ($this->impersonateUser && $method === 'POST') {
+            $options['headers'][$this->impersonateHeader] = $this->impersonateUserId;
+        }
+
         // Prevent create when using upsert
         // https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/perform-conditional-operations-using-web-api#prevent-create-in-upsert
         if ($method === 'PATCH') {
@@ -384,7 +407,9 @@ class MicrosoftDynamics365 extends Crm
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::apiError($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $url = rtrim(App::parseEnv($this->apiDomain), '/');

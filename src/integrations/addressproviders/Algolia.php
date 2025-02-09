@@ -39,9 +39,14 @@ class Algolia extends AddressProvider
     // Public Methods
     // =========================================================================
 
+    public function getClassHandle(): string
+    {
+        return 'algolia-places';
+    }
+
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Use [Algolia Places](https://community.algolia.com/places/) to suggest addresses, for address fields.');
+        return Craft::t('formie', 'Use {link} to suggest addresses, for address fields.', ['link' => '[Algolia Places](https://community.algolia.com/places/)']);
     }
 
     /**
@@ -73,7 +78,7 @@ class Algolia extends AddressProvider
         ];
 
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/address-providers/algolia-places.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/address-providers/algolia-places.js'),
             'module' => 'FormieAlgoliaPlaces',
             'settings' => $settings,
         ];

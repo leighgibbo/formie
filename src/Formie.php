@@ -6,6 +6,7 @@ use verbb\formie\base\Routes;
 use verbb\formie\elements\Form;
 use verbb\formie\elements\SentNotification;
 use verbb\formie\elements\Submission;
+use verbb\formie\elements\exporters\FormExport;
 use verbb\formie\elements\exporters\SubmissionExport;
 use verbb\formie\fields\Forms;
 use verbb\formie\fields\Submissions;
@@ -42,6 +43,8 @@ use craft\console\Application as ConsoleApplication;
 use craft\console\Controller as ConsoleController;
 use craft\console\controllers\ResaveController;
 use craft\elements\User as UserElement;
+use craft\elements\exporters\Expanded;
+use craft\elements\exporters\Raw;
 use craft\events\DefineConsoleActionsEvent;
 use craft\events\FieldLayoutEvent;
 use craft\events\PluginEvent;
@@ -79,17 +82,21 @@ use craft\feedme\services\Fields as FeedMeFields;
 
 use yii\base\Event;
 use yii\queue\ExecEvent;
-use craft\elements\exporters\Expanded;
-use craft\elements\exporters\Raw;
 
 class Formie extends Plugin
 {
+    // Constants
+    // =========================================================================
+
+    public const EVENT_MODIFY_TWIG_ENVIRONMENT = 'modifyTwigEnvironment';
+
+    
     // Properties
     // =========================================================================
 
     public bool $hasCpSection = true;
     public bool $hasCpSettings = true;
-    public string $schemaVersion = '2.0.10';
+    public string $schemaVersion = '2.0.19';
     public string $minVersionRequired = '1.5.15';
 
 
@@ -228,6 +235,7 @@ class Formie extends Plugin
                     ],
                 ],
                 'formie-manageFormIntegrations' => ['label' => Craft::t('formie', 'Manage form integrations'), 'info' => Craft::t('formie', 'This permission will be applied to new forms automatically.')],
+                'formie-manageFormUsage' => ['label' => Craft::t('formie', 'View form usage'), 'info' => Craft::t('formie', 'This permission will be applied to new forms automatically.')],
                 'formie-manageFormSettings' => ['label' => Craft::t('formie', 'Manage form settings'), 'info' => Craft::t('formie', 'This permission will be applied to new forms automatically.')],
             ];
 
@@ -476,6 +484,11 @@ class Formie extends Plugin
     {
         $projectConfigService = Craft::$app->getProjectConfig();
 
+        // Protect against firing too early before Formie has installed
+        if (!Craft::$app->getPlugins()->isPluginInstalled(Formie::getInstance()->id)) {
+            return;
+        }
+
         $statusesService = $this->getStatuses();
         $projectConfigService
             ->onAdd(StatusesService::CONFIG_STATUSES_KEY . '.{uid}', [$statusesService, 'handleChangedStatus'])
@@ -533,6 +546,23 @@ class Formie extends Plugin
 
     private function _registerElementExports(): void
     {
+        Event::on(Form::class, Form::EVENT_REGISTER_EXPORTERS, function(RegisterElementExportersEvent $event) {
+            // Remove defaults, but allow third-party ones
+            foreach ($event->exporters as $key => $exporter) {
+                if ($exporter === Raw::class) {
+                    unset($event->exporters[$key]);
+                }
+
+                if ($exporter === Expanded::class) {
+                    unset($event->exporters[$key]);
+                }
+            }
+
+            $event->exporters = array_values($event->exporters);
+
+            $event->exporters[] = FormExport::class;
+        });
+
         Event::on(Submission::class, Submission::EVENT_REGISTER_EXPORTERS, function(RegisterElementExportersEvent $event) {
             // Remove defaults, but allow third-party ones
             foreach ($event->exporters as $key => $exporter) {

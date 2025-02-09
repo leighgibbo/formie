@@ -34,12 +34,23 @@ class Recaptcha extends Captcha
     public string $badge = 'bottomright';
     public string $language = 'en';
     public float $minScore = 0.5;
-    public ?string $projectId = null;
     public string $scriptLoadingMethod = 'asyncDefer';
+    public ?string $enterpriseType = 'score';
+    public ?string $projectId = null;
 
 
     // Public Methods
     // =========================================================================
+
+    public function __construct(array $config = [])
+    {
+        // Config normalization
+        if (array_key_exists('apiKey', $config)) {
+            $config['secretKey'] = ArrayHelper::remove($config, 'apiKey');
+        }
+
+        parent::__construct($config);
+    }
 
     public function getName(): string
     {
@@ -56,18 +67,17 @@ class Recaptcha extends Captcha
      */
     public function getSettingsHtml(): ?string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/recaptcha/_plugin-settings', [
-            'integration' => $this,
-            'languageOptions' => $this->_getLanguageOptions(),
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+        $variables['languageOptions'] = $this->_getLanguageOptions();
+
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/recaptcha/_plugin-settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/recaptcha/_form-settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+        
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/recaptcha/_form-settings', $variables);
     }
 
     /**
@@ -96,10 +106,11 @@ class Recaptcha extends Captcha
             'submitMethod' => $form->settings->submitMethod ?? 'page-reload',
             'hasMultiplePages' => $form->hasMultiplePages() ?? false,
             'loadingMethod' => $this->scriptLoadingMethod,
+            'enterpriseType' => $this->enterpriseType,
         ];
 
         if ($this->type === self::RECAPTCHA_TYPE_ENTERPRISE) {
-            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/recaptcha-enterprise.js', true);
+            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/recaptcha-enterprise.js');
 
             return [
                 'src' => $src,
@@ -109,7 +120,7 @@ class Recaptcha extends Captcha
         }
 
         if ($this->type === self::RECAPTCHA_TYPE_V3) {
-            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/recaptcha-v3.js', true);
+            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/recaptcha-v3.js');
 
             return [
                 'src' => $src,
@@ -119,7 +130,7 @@ class Recaptcha extends Captcha
         }
 
         if ($this->type === self::RECAPTCHA_TYPE_V2_CHECKBOX) {
-            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/recaptcha-v2-checkbox.js', true);
+            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/recaptcha-v2-checkbox.js');
 
             return [
                 'src' => $src,
@@ -129,7 +140,7 @@ class Recaptcha extends Captcha
         }
 
         if ($this->type === self::RECAPTCHA_TYPE_V2_INVISIBLE) {
-            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/recaptcha-v2-invisible.js', true);
+            $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/recaptcha-v2-invisible.js');
 
             return [
                 'src' => $src,
@@ -144,7 +155,7 @@ class Recaptcha extends Captcha
     /**
      * @inheritDoc
      */
-    public function getRefreshJsVariables(Form $form, $page = null): array
+    public function getGqlVariables(Form $form, $page = null): array
     {
         return [
             'formId' => $form->getFormId(),
@@ -167,7 +178,12 @@ class Recaptcha extends Captcha
             return false;
         }
 
-        $client = Craft::createGuzzleClient();
+        $client = Craft::createGuzzleClient([
+            'headers' => [
+                'Referer' => Craft::$app->getSites()->getPrimarySite()->getBaseUrl(),
+            ],
+        ]);
+
         $siteKey = App::parseEnv($this->siteKey);
         $secretKey = App::parseEnv($this->secretKey);
         $projectId = App::parseEnv($this->projectId);
@@ -178,29 +194,34 @@ class Recaptcha extends Captcha
                     'event' => [
                         'siteKey' => $siteKey,
                         'token' => $response,
+                        'userAgent' => Craft::$app->getRequest()->getUserAgent(),
+                        'userIpAddress' => Craft::$app->getRequest()->getRemoteIP(),
                     ],
                 ],
             ]);
 
             $result = Json::decode((string)$response->getBody(), true);
 
+            $isValid = $result['tokenProperties']['valid'] ?? false;
             $reason = $result['tokenProperties']['invalidReason'] ?? false;
 
-            if ($reason) {
+            if (!$isValid && $reason) {
                 $this->spamReason = $reason;
             }
 
-            if (isset($result['score'])) {
-                $scoreRating = ($result['score'] >= $this->minScore);
+            $score = $result['riskAnalysis']['score'] ?? $result['score'] ?? null;
+
+            if ($score) {
+                $scoreRating = ($score >= $this->minScore);
 
                 if (!$scoreRating) {
-                    $this->spamReason = 'Score ' . $result['score'] . ' is below threshold ' . $this->minScore . '.';
+                    $this->spamReason = 'Score ' . $score . ' is below threshold ' . $this->minScore . '.';
                 }
 
                 return $scoreRating;
             }
 
-            return $result['tokenProperties']['valid'] ?? false;
+            return $isValid;
         }
 
         $response = $client->post('https://www.google.com/recaptcha/api/siteverify', [

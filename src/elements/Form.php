@@ -9,6 +9,7 @@ use verbb\formie\base\Miscellaneous;
 use verbb\formie\base\NestedFieldInterface;
 use verbb\formie\behaviors\FieldLayoutBehavior;
 use verbb\formie\elements\actions\DuplicateForm;
+use verbb\formie\elements\conditions\FormCondition;
 use verbb\formie\elements\db\FormQuery;
 use verbb\formie\events\ModifyFormHtmlTagEvent;
 use verbb\formie\fields\formfields\SingleLineText;
@@ -36,11 +37,13 @@ use craft\elements\User;
 use craft\elements\actions\Delete;
 use craft\elements\actions\Edit;
 use craft\elements\actions\Restore;
+use craft\elements\conditions\ElementConditionInterface;
 use craft\elements\db\ElementQueryInterface;
 use craft\errors\MissingComponentException;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craft\helpers\Json;
+use craft\helpers\Session;
 use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
 use craft\models\FieldLayout as CraftFieldLayout;
@@ -87,6 +90,14 @@ class Form extends Element
     /**
      * @inheritDoc
      */
+    public static function trackChanges(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @inheritDoc
+     */
     public static function hasTitles(): bool
     {
         return true;
@@ -114,6 +125,11 @@ class Form extends Element
     public static function find(): FormQuery
     {
         return new FormQuery(static::class);
+    }
+
+    public static function createCondition(): ElementConditionInterface
+    {
+        return Craft::createObject(FormCondition::class, [static::class]);
     }
 
     /**
@@ -156,39 +172,15 @@ class Form extends Element
 
         return $sources;
     }
-    
-    /**
-     * @inheritDoc
-     */
-    protected static function indexElements(ElementQueryInterface $elementQuery, ?string $sourceKey): array
-    {
-        $userSession = Craft::$app->getUser();
-        $elements = $elementQuery->all();
-
-        // Filter out any elements the user doesn't have access to view
-        // Can the user edit _every_ form?
-        if (!$userSession->checkPermission('formie-viewForms')) {
-            // Find all UIDs the user has permission to
-            foreach ($elements as $key => $element) {
-                if (!$userSession->checkPermission('formie-manageForm:' . $element->uid)) {
-                    unset($elements[$key]);
-                }
-            }
-        }
-
-        return array_values($elements);
-    }
 
     /**
      * @inheritDoc
      */
     protected static function defineFieldLayouts(string $source): array
     {
-        if (self::$_layoutsByType !== null) {
-            return self::$_layoutsByType;
-        }
-
-        return self::$_layoutsByType = Craft::$app->getFields()->getLayoutsByType(static::class);
+        // In the context of the form element index, we don't want any field layouts shown. That's because forms don't
+        // have content themselves, so there's no need to allow fields as columns or being able to sort forms by fields.
+        return [];
     }
 
     /**
@@ -244,6 +236,7 @@ class Form extends Element
             'id' => ['label' => Craft::t('app', 'ID')],
             'handle' => ['label' => Craft::t('app', 'Handle')],
             'template' => ['label' => Craft::t('app', 'Template')],
+            'pageCount' => ['label' => Craft::t('formie', 'Page Count')],
             'usageCount' => ['label' => Craft::t('formie', 'Usage Count')],
             'dateCreated' => ['label' => Craft::t('app', 'Date Created')],
             'dateUpdated' => ['label' => Craft::t('app', 'Date Updated')],
@@ -281,6 +274,11 @@ class Form extends Element
         return [
             'title' => Craft::t('app', 'Title'),
             'handle' => Craft::t('app', 'Handle'),
+            [
+                'label' => Craft::t('app', 'Page Count'),
+                'orderBy' => 'pageCount',
+                'attribute' => 'pageCount',
+            ],
             [
                 'label' => Craft::t('app', 'Date Created'),
                 'orderBy' => 'elements.dateCreated',
@@ -340,10 +338,9 @@ class Form extends Element
     private ?string $_actionUrl = null;
 
     // Render Options
+    private array $_renderOptions = [];
     private array $_themeConfig = [];
     private ?string $_sessionKey = null;
-
-    private static ?array $_layoutsByType = null;
 
 
     // Public Methods
@@ -400,6 +397,29 @@ class Form extends Element
         ];
 
         return $behaviors;
+    }
+
+    public function getScenario()
+    {
+        // Only set to "live" after creating the form. Otherwise Form Template fields validate.
+        if ($this->id) {
+            $newLayoutId = $this->templateId;
+            $savedLayoutId = (new Query())
+                ->select(['templateId'])
+                ->from(['{{%formie_forms}}'])
+                ->where(['id' => $this->id])
+                ->scalar();
+
+            // To make things more complicated, we need to check if we're applying a new template, and not validate
+            // immediately, only on next save. This is because the UI needs to catch up once the form template has changed.
+            if (!$savedLayoutId || (!$newLayoutId && $savedLayoutId)) {
+                return self::SCENARIO_ESSENTIALS;
+            }
+
+            return self::SCENARIO_LIVE;
+        }
+
+        return parent::getScenario();
     }
     
     /**
@@ -501,6 +521,15 @@ class Form extends Element
      */
     public function getCpEditUrl(): ?string
     {
+        $userSession = Craft::$app->getUser();
+
+        // Check if the user has permission to edit this form
+        if ($userSession && !$userSession->checkPermission('formie-editForms')) {
+            if (!$userSession->checkPermission('formie-manageForm:' . $this->uid)) {
+                return null;
+            }
+        }
+
         return UrlHelper::cpUrl("formie/forms/edit/{$this->id}");
     }
 
@@ -719,6 +748,27 @@ class Form extends Element
         return $this->_rows = array_merge(...$rows);
     }
 
+    public function getFieldsByType(string $type): array
+    {
+        $fields = [];
+
+        foreach ($this->getCustomFields() as $field) {
+            if (get_class($field) === $type) {
+                $fields[] = $field;
+            }
+
+            if ($field instanceof NestedFieldInterface) {
+                foreach ($field->getCustomFields() as $nestedField) {
+                    if (get_class($nestedField) === $type) {
+                        $fields[] = $nestedField;
+                    }
+                }
+            }
+        }
+
+        return $fields;
+    }
+
     /**
      * Returns true if any form field has conditions configured.
      */
@@ -796,7 +846,7 @@ class Form extends Element
 
         if ($pages) {
             // Check if there's a session variable
-            $pageId = Craft::$app->getSession()->get($this->_getSessionKey('pageId'));
+            $pageId = Session::get($this->_getSessionKey('pageId'));
 
             if ($pageId) {
                 $currentPage = ArrayHelper::firstWhere($pages, 'id', $pageId);
@@ -939,7 +989,7 @@ class Form extends Element
      */
     public function setCurrentPage($page): void
     {
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+        if (Craft::$app->getRequest()->getIsConsoleRequest() || !Session::exists()) {
             return;
         }
 
@@ -947,7 +997,7 @@ class Form extends Element
             return;
         }
 
-        Craft::$app->getSession()->set($this->_getSessionKey('pageId'), $page->id);
+        Session::set($this->_getSessionKey('pageId'), $page->id);
     }
 
     /**
@@ -957,11 +1007,11 @@ class Form extends Element
      */
     public function resetCurrentPage(): void
     {
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+        if (Craft::$app->getRequest()->getIsConsoleRequest() || !Session::exists()) {
             return;
         }
 
-        Craft::$app->getSession()->remove($this->_getSessionKey('pageId'));
+        Session::remove($this->_getSessionKey('pageId'));
     }
 
     /**
@@ -1017,7 +1067,7 @@ class Form extends Element
         }
 
         // Check if there's a session variable
-        $submissionId = Craft::$app->getSession()->get($this->_getSessionKey('submissionId'));
+        $submissionId = Session::get($this->_getSessionKey('submissionId'));
 
         if ($submissionId) {
             /* @var Submission $submission */
@@ -1047,14 +1097,14 @@ class Form extends Element
      */
     public function setCurrentSubmission(?Submission $submission): void
     {
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+        if (Craft::$app->getRequest()->getIsConsoleRequest() || !Session::exists()) {
             return;
         }
 
         if (!$submission) {
             $this->resetCurrentSubmission();
         } else {
-            Craft::$app->getSession()->set($this->_getSessionKey('submissionId'), $submission->id);
+            Session::set($this->_getSessionKey('submissionId'), $submission->id);
         }
 
         $this->_currentSubmission = $submission;
@@ -1067,12 +1117,12 @@ class Form extends Element
      */
     public function resetCurrentSubmission(): void
     {
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+        if (Craft::$app->getRequest()->getIsConsoleRequest() || !Session::exists()) {
             return;
         }
 
         $this->resetCurrentPage();
-        Craft::$app->getSession()->remove($this->_getSessionKey('submissionId'));
+        Session::remove($this->_getSessionKey('submissionId'));
 
         $this->_currentSubmission = null;
     }
@@ -1286,11 +1336,19 @@ class Form extends Element
 
         // Add any query params to the URL automatically (think utm)
         if ($url && $request->getIsSiteRequest() && $includeQueryString) {
-            $url = UrlHelper::url($url, $request->getQueryStringWithoutPath());
+            // But only add query strings if they don't override any set for the redirect URL already
+            // For example, the request URL might be `submissionId=12` but the redirect is `submissionId={id}`
+            // we wouldn't want to overwrite the latter with the former. Specifically set URLs take precedence.
+            $requestParams = $request->getQueryStringWithoutPath();
+            $urlParams = explode('?', $url)[1] ?? '';
+
+            // UrlHelper will take care of normalization. The important bit is to override request params if
+            // there's any duplication.
+            $url = UrlHelper::url($url, $requestParams . '&' . $urlParams);
         }
 
         // Handle any UTF characters defined in the URL and encode them properly
-        $url = utf8_encode($url);
+        $url = mb_convert_encoding($url, 'UTF-8', 'ISO-8859-1');
 
         return $url;
     }
@@ -1501,14 +1559,18 @@ class Form extends Element
 
         if ($key === 'pageTab') {
             $submission = $context['submission'] ?? null;
-            $currentPageId = $context['currentPage']->id ?? null;
+            $currentPage = $context['currentPage'] ?? null;
+            $currentPageId = $currentPage->id ?? null;
+            $currentPageIndex = $this->getPageIndex($currentPage);
             $page = $context['page'] ?? null;
             $pageId = $page->id ?? null;
+            $pageIndex = $this->getPageIndex($page);
 
             return new HtmlTag('div', [
                 'id' => 'fui-tab-' . $pageId,
                 'class' => [
                     'fui-tab',
+                    ($currentPageIndex > $pageIndex) ? 'fui-tab-complete' : false,
                     ($pageId == $currentPageId) ? 'fui-tab-active' : false,
                     $page->getFieldErrors($submission) ? 'fui-tab-error' : false,
                 ],
@@ -1582,6 +1644,7 @@ class Form extends Element
                     'fui-row fui-page-row',
                     $fields ? false : 'fui-row-empty',
                 ],
+                'data-fui-field-count' => count($fields),
             ]);
         }
 
@@ -1689,15 +1752,29 @@ class Form extends Element
             ]);
         }
 
+        if ($key === 'errors') {
+            return new HtmlTag('ul', [
+                'class' => 'fui-errors',
+            ]);
+        }
+
+        if ($key === 'error') {
+            return new HtmlTag('li', [
+                'class' => 'fui-error-message',
+            ]);
+        }
+
         return null;
     }
 
     public function applyRenderOptions(array $renderOptions = []): void
     {
+        $this->_renderOptions = $renderOptions;
+
         // Allow a session key to be provided to scope incomplete submission content.
         // Base64 encode it not for security, just so it's not plain text an "obvious".
         $sessionKey = $renderOptions['sessionKey'] ?? null;
-        $this->setSessionKey(base64_encode($sessionKey));
+        $this->setSessionKey(base64_encode((string)$sessionKey));
 
         // Theme options
         $templateConfig = $renderOptions['themeConfig'] ?? [];
@@ -1758,14 +1835,21 @@ class Form extends Element
             'scrollToTop' => $this->settings->scrollToTop,
             'hasMultiplePages' => $this->hasMultiplePages(),
             'pages' => $this->getPages(),
-            'classes' => $this->getFrontEndClasses(),
+            'themeConfig' => $this->getThemeConfigAttributes(),
             'redirectUrl' => $this->getRedirectUrl(),
             'currentPageId' => $this->getCurrentPage()->id ?: '',
             'outputJsTheme' => $this->getFrontEndTemplateOption('outputJsTheme'),
             'enableUnloadWarning' => $pluginSettings->enableUnloadWarning,
             'enableBackSubmission' => $pluginSettings->enableBackSubmission,
             'ajaxTimeout' => $pluginSettings->ajaxTimeout,
+            'baseActionUrl' => rtrim(UrlHelper::actionUrl(''), '/'),
+
+            // Generate the refresh token here to make use of `UrlHelper` generation
+            'refreshTokenUrl' => UrlHelper::actionUrl('formie/forms/refresh-tokens', ['form' => 'FORM_PLACEHOLDER']),
         ];
+
+        // Render options could contain settings for script tag attributes (CSP)
+        $settings['scriptAttributes'] = $this->_renderOptions['scriptAttributes'] ?? [];
 
         $registeredJs = [];
 
@@ -1804,7 +1888,7 @@ class Form extends Element
         // See if we have any condition's setup for the form. No need to include otherwise
         if ($this->hasConditions()) {
             $registeredJs[] = [[
-                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/conditions.js', true),
+                'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/conditions.js'),
                 'module' => 'FormieConditions',
             ]];
         }
@@ -1834,9 +1918,9 @@ class Form extends Element
         $this->_frontEndJsEvents[] = $value;
     }
 
-    public function getFrontEndClasses()
+    public function getThemeConfigAttributes()
     {
-        $allClasses = [];
+        $allAttributes = [];
 
         // Provide defaults to fallback on, which aren't in Theme Config
         $configKeys = [
@@ -1845,6 +1929,7 @@ class Form extends Element
             'disabled' => 'fui-disabled',
             'tabError' => 'fui-tab-error',
             'tabActive' => 'fui-tab-active',
+            'tabComplete' => 'fui-tab-complete',
             'successMessage' => 'fui-alert-success',
             'alert' => 'fui-alert',
             'alertError' => 'fui-alert-error',
@@ -1880,7 +1965,8 @@ class Form extends Element
                     $classes = [$classes];
                 }
 
-                $allClasses[$configKey] = implode(' ', $classes);
+                $allAttributes[$configKey] = Html::getTagAttributes($tag->attributes);
+                $allAttributes[$configKey]['class'] = implode(' ', $classes);
             } else if ($fieldTag) {
                 $classes = $fieldTag->attributes['class'] ?? $fallback;
 
@@ -1888,13 +1974,14 @@ class Form extends Element
                     $classes = [$classes];
                 }
 
-                $allClasses[$configKey] = implode(' ', $classes);
+                $allAttributes[$configKey] = Html::getTagAttributes($fieldTag->attributes);
+                $allAttributes[$configKey]['class'] = implode(' ', $classes);
             } else {
-                $allClasses[$configKey] = $fallback;
+                $allAttributes[$configKey]['class'] = $fallback;
             }
         }
 
-        return $allClasses;
+        return $allAttributes;
     }
 
     public function getFrontEndTemplateOption($option): bool
@@ -2002,11 +2089,11 @@ class Form extends Element
 
     public function getSnapshotData($key = null)
     {
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+        if (Craft::$app->getRequest()->getIsConsoleRequest() || !Session::exists()) {
             return [];
         }
 
-        $snapshotData = Craft::$app->getSession()->get($this->_getSessionKey('snapshot'));
+        $snapshotData = Session::get($this->_getSessionKey('snapshot'));
 
         if ($key) {
             return $snapshotData[$key] ?? [];
@@ -2017,6 +2104,7 @@ class Form extends Element
 
     public function setSnapshotData($key, $data): void
     {
+        // The lack of `Session::exists()` is deliberate, as we want to set snapshot data before the session might be ready
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
             return;
         }
@@ -2026,16 +2114,16 @@ class Form extends Element
         $currentData = $snapshotData[$key] ?? [];
         $snapshotData[$key] = array_merge($currentData, $data);
 
-        Craft::$app->getSession()->set($this->_getSessionKey('snapshot'), $snapshotData);
+        Session::set($this->_getSessionKey('snapshot'), $snapshotData);
     }
 
     public function resetSnapshotData(): void
     {
-        if (Craft::$app->getRequest()->getIsConsoleRequest()) {
+        if (Craft::$app->getRequest()->getIsConsoleRequest() || !Session::exists()) {
             return;
         }
 
-        Craft::$app->getSession()->remove($this->_getSessionKey('snapshot'));
+        Session::remove($this->_getSessionKey('snapshot'));
     }
 
     public function isAvailable(): bool
@@ -2202,7 +2290,7 @@ class Form extends Element
 
         $record->handle = $this->handle;
         $record->fieldContentTable = $this->fieldContentTable;
-        $record->settings = $this->settings;
+        $record->settings = $this->settings->serializeSettings();
         $record->templateId = $this->templateId;
         $record->submitActionEntryId = $this->submitActionEntryId;
         $record->submitActionEntrySiteId = $this->submitActionEntrySiteId;
@@ -2363,6 +2451,7 @@ class Form extends Element
     {
         return match ($attribute) {
             'usageCount' => count(Formie::$plugin->getForms()->getFormUsage($this)),
+            'pageCount' => count($this->getPages()),
             default => parent::tableAttributeHtml($attribute),
         };
     }

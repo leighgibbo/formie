@@ -32,6 +32,7 @@ class Notification extends Model
     public ?int $templateId = null;
     public ?int $pdfTemplateId = null;
     public ?string $name = null;
+    public ?string $handle = null;
     public ?bool $enabled = null;
     public ?string $subject = null;
     public string $recipients = self::RECIPIENTS_EMAIL;
@@ -62,6 +63,20 @@ class Notification extends Model
 
     // Public Methods
     // =========================================================================
+
+    public function __construct(array $config = [])
+    {
+        // Config normalization
+        if (isset($config['attachAssetsOptions'])) {
+            unset($config['attachAssetsOptions']);
+        }
+
+        if (isset($config['attachAssetsHtml'])) {
+            unset($config['attachAssetsHtml']);
+        }
+
+        parent::__construct($config);
+    }
 
     /**
      * @inheritDoc

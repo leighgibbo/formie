@@ -42,7 +42,7 @@ class ActiveCampaign extends EmailMarketing
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Sign up users to your ActiveCampaign lists to grow your audience for campaigns.');
+        return Craft::t('formie', 'Sign up users to your {name} lists to grow your audience for campaigns.', ['name' => static::displayName()]);
     }
 
     /**
@@ -69,6 +69,18 @@ class ActiveCampaign extends EmailMarketing
 
             foreach ($lists as $list) {
                 $listFields = array_merge([
+                    new IntegrationField([
+                        'handle' => 'subscribed',
+                        'name' => Craft::t('formie', 'Subscribe Status'),
+                        'type' => IntegrationField::TYPE_NUMBER,
+                        'options' => [
+                            'label' => Craft::t('formie', 'Subscribe Status'),
+                            'options' => [
+                                ['label' => Craft::t('formie', 'Subscribe'), 'value' => 1],
+                                ['label' => Craft::t('formie', 'Unsubscribe'), 'value' => 2],
+                            ],
+                        ],
+                    ]),
                     new IntegrationField([
                         'handle' => 'email',
                         'name' => Craft::t('formie', 'Email'),
@@ -116,6 +128,7 @@ class ActiveCampaign extends EmailMarketing
             $firstName = ArrayHelper::remove($fieldValues, 'firstName');
             $lastName = ArrayHelper::remove($fieldValues, 'lastName');
             $phone = ArrayHelper::remove($fieldValues, 'phone');
+            $subscribed = ArrayHelper::remove($fieldValues, 'subscribed', 1);
 
             $tags = ArrayHelper::remove($fieldValues, 'tags');
 
@@ -150,7 +163,7 @@ class ActiveCampaign extends EmailMarketing
                 'contactList' => [
                     'list' => $this->listId,
                     'contact' => $contactId,
-                    'status' => 1,
+                    'status' => $subscribed,
                 ],
             ];
 
@@ -296,6 +309,7 @@ class ActiveCampaign extends EmailMarketing
                 'handle' => (string)$field['id'],
                 'name' => $fieldName,
                 'type' => $this->_convertFieldType($fieldType),
+                'sourceType' => $fieldType,
             ]);
         }
 

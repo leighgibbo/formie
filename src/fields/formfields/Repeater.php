@@ -11,6 +11,7 @@ use verbb\formie\gql\types\input\RepeaterInputType;
 use verbb\formie\gql\types\RowType;
 use verbb\formie\helpers\SchemaHelper;
 use verbb\formie\models\HtmlTag;
+use verbb\formie\positions\Hidden as HiddenPosition;
 
 use Craft;
 use craft\base\EagerLoadingFieldInterface;
@@ -180,6 +181,10 @@ class Repeater extends FormField implements NestedFieldInterface, EagerLoadingFi
             try {
                 $row = new NestedFieldRow();
                 $row->fieldId = $this->id;
+
+                // Ensure that the siteId is set to the current site
+                $row->siteId = Craft::$app->getSites()->getCurrentSite()->id;
+
                 $row->setFieldValues($fieldContent);
 
                 $blocks[] = $row;
@@ -212,7 +217,7 @@ class Repeater extends FormField implements NestedFieldInterface, EagerLoadingFi
         $modules = $this->traitGetFrontEndJsModules();
 
         $modules[] = [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/fields/repeater.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/fields/repeater.js'),
             'module' => 'FormieRepeater',
         ];
 
@@ -252,6 +257,7 @@ class Repeater extends FormField implements NestedFieldInterface, EagerLoadingFi
     public function defineSettingsSchema(): array
     {
         return [
+            SchemaHelper::includeInEmailField(),
             SchemaHelper::numberField([
                 'label' => Craft::t('formie', 'Minimum instances'),
                 'help' => Craft::t('formie', 'The minimum required number of instances of this repeater‘s fields that must be completed.'),
@@ -359,8 +365,15 @@ class Repeater extends FormField implements NestedFieldInterface, EagerLoadingFi
         }
 
         if ($key === 'fieldLabel') {
+            $labelPosition = $context['labelPosition'] ?? null;
+
             return new HtmlTag('legend', [
-                'class' => 'fui-legend',
+                'class' => [
+                    'fui-legend',
+                ],
+                'data' => [
+                    'fui-sr-only' => $labelPosition instanceof HiddenPosition ? true : false,
+                ],
             ]);
         }
 
@@ -375,6 +388,7 @@ class Repeater extends FormField implements NestedFieldInterface, EagerLoadingFi
             return new HtmlTag('div', [
                 'class' => 'fui-repeater-row',
                 'data-repeater-row' => true,
+                'data-repeater-row-id' => $context['id'] ?? '__ROW__',
             ]);
         }
 

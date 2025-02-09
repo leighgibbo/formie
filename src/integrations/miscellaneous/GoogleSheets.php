@@ -96,7 +96,7 @@ class GoogleSheets extends Miscellaneous
 
         // Allow a proxy to our server to forward on the request - just for local dev ease
         if ($this->getProxyRedirect()) {
-            return "https://formie.verbb.io?return=$uri";
+            return "https://proxy.verbb.io?return=$uri";
         }
 
         return $uri;
@@ -234,7 +234,9 @@ class GoogleSheets extends Miscellaneous
         $token = $this->getToken();
 
         if (!$token) {
-            Integration::apiError($this, 'Token not found for integration.', true);
+            Integration::error($this, 'Token not found for integration. Attempting to refresh token.');
+
+            $token = $this->getToken(true);
         }
 
         $spreadsheetId = App::parseEnv($this->spreadsheetId);

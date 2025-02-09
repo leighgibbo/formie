@@ -44,18 +44,17 @@ class Hcaptcha extends Captcha
      */
     public function getSettingsHtml(): ?string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/hcaptcha/_plugin-settings', [
-            'integration' => $this,
-            'languageOptions' => $this->_getLanguageOptions(),
-        ]);
+        $variables = $this->getSettingsHtmlVariables();
+        $variables['languageOptions'] = $this->_getLanguageOptions();
+
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/hcaptcha/_plugin-settings', $variables);
     }
 
     public function getFormSettingsHtml($form): string
     {
-        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/hcaptcha/_form-settings', [
-            'integration' => $this,
-            'form' => $form,
-        ]);
+        $variables = $this->getFormSettingsHtmlVariables($form);
+        
+        return Craft::$app->getView()->renderTemplate('formie/integrations/captchas/hcaptcha/_form-settings', $variables);
     }
 
     /**
@@ -85,7 +84,7 @@ class Hcaptcha extends Captcha
             'loadingMethod' => $this->scriptLoadingMethod,
         ];
 
-        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/captchas/hcaptcha.js', true);
+        $src = Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/captchas/hcaptcha.js');
 
         return [
             'src' => $src,
@@ -97,7 +96,7 @@ class Hcaptcha extends Captcha
     /**
      * @inheritDoc
      */
-    public function getRefreshJsVariables(Form $form, $page = null): array
+    public function getGqlVariables(Form $form, $page = null): array
     {
         return [
             'formId' => $form->getFormId(),

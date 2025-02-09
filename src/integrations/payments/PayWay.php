@@ -65,7 +65,7 @@ class PayWay extends Payment
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Provide payment capabilities for your forms with Westpac PayWay.');
+        return Craft::t('formie', 'Provide payment capabilities for your forms with {name}.', ['name' => static::displayName()]);
     }
 
     /**
@@ -113,7 +113,7 @@ class PayWay extends Payment
         ];
 
         return [
-            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/js/payments/payway.js', true),
+            'src' => Craft::$app->getAssetManager()->getPublishedUrl('@verbb/formie/web/assets/frontend/dist/', true, 'js/payments/payway.js'),
             'module' => 'FormiePayWay',
             'settings' => $settings,
         ];

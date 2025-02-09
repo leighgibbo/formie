@@ -3,10 +3,7 @@ namespace verbb\formie\helpers;
 
 use verbb\formie\Formie;
 use verbb\formie\elements\Submission;
-use verbb\formie\fields\formfields\Hidden;
-use verbb\formie\fields\formfields\Group;
-use verbb\formie\fields\formfields\Password;
-use verbb\formie\fields\formfields\Recipients;
+use verbb\formie\fields\formfields;
 use verbb\formie\helpers\ArrayHelper;
 
 use Craft;
@@ -96,7 +93,7 @@ class ConditionsHelper
                 ];
 
                 // Protect against empty conditions
-                if (!trim(ArrayHelper::recursiveImplode('', $variables))) {
+                if (!trim(ArrayHelper::recursiveImplode($variables, ''))) {
                     continue;
                 }
 
@@ -129,7 +126,7 @@ class ConditionsHelper
                     } else if ($condition['condition'] === '!=') {
                         $condition['condition'] = 'notContains';
                     } else {
-                        $variables['field'] = ArrayHelper::recursiveImplode(' ', $variables['field']);
+                        $variables['field'] = ArrayHelper::recursiveImplode($variables['field'], ' ');
                     }
                 }
 
@@ -149,7 +146,7 @@ class ConditionsHelper
                 }
             } catch (Throwable $e) {
                 Formie::error(Craft::t('formie', 'Failed to parse conditional “{rule}”: “{message}” {file}:{line}', [
-                    'rule' => trim(ArrayHelper::recursiveImplode('', $condition)),
+                    'rule' => trim(ArrayHelper::recursiveImplode($condition, '')),
                     'message' => $e->getMessage(),
                     'file' => $e->getFile(),
                     'line' => $e->getLine(),
@@ -203,21 +200,27 @@ class ConditionsHelper
                 // (or field setting labels), but we want IDs.
                 if ($field instanceof BaseRelationField) {
                     $value = $field->serializeValue($value, $submission);
-                } else if ($field instanceof Password) {
+                } else if ($field instanceof formfields\Password) {
                     // Don't mess around with passwords for conditions. We don't really "know" the value
                     // but more important will cause an infinite loop (somehow)
                     $value = '•••••••••••••••••••••';
-                } else if ($field instanceof Group) {
+                } else if ($field instanceof formfields\Group) {
                     // Handling for Group fields who have a particular structure
                     $rows = array_values($field->serializeValue($value, $submission))[0] ?? [];
 
                     $value = ['rows' => ['new1' => $rows]];
-                } else if ($field instanceof Recipients) {
+                } else if ($field instanceof formfields\Recipients) {
                     // Recipients fields should use encoded values, because they can't be exposed in HTML source
                     $value = $field->getValueAsString($field->getFakeValue($value), $submission);
-                } else if ($field instanceof Hidden) {
+                } else if ($field instanceof formfields\Hidden) {
                     // Prevent an infinite loop with hidden fields, as their `serializeValue()` will call this
                     $value = $field->getValueAsString($value, $submission);
+                } else if ($field instanceof formfields\Address) {
+                    // Some fields should use their extended values
+                    $value = $field->getValueAsJson($value, $submission);
+                } else if ($field instanceof formfields\Name && $field->useMultipleFields) {
+                    // Some fields should use their extended values
+                    $value = $field->getValueAsJson($value, $submission);
                 } else if (method_exists($field, 'serializeValueForIntegration')) {
                     $value = $field->serializeValueForIntegration($value, $submission);
                 } else {

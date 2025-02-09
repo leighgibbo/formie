@@ -5,6 +5,8 @@ use verbb\formie\Formie;
 use verbb\formie\base\SubFieldInterface;
 use verbb\formie\elements\Form;
 use verbb\formie\elements\Submission;
+use verbb\formie\events\ParseVariablesEvent;
+use verbb\formie\events\RegisterVariablesEvent;
 use verbb\formie\fields\formfields;
 use verbb\formie\models\Notification;
 
@@ -14,9 +16,11 @@ use craft\fields\BaseRelationField;
 use craft\fields\data\MultiOptionsFieldData;
 use craft\fields\data\SingleOptionFieldData;
 use craft\helpers\App;
+use craft\models\Settings;
 use craft\models\Site;
 use craft\web\twig\variables\CraftVariable;
 
+use yii\base\Event;
 use yii\web\IdentityInterface;
 
 use DateTime;
@@ -26,6 +30,13 @@ use Exception;
 
 class Variables
 {
+    // Constants
+    // =========================================================================
+
+    public const EVENT_REGISTER_VARIABLES = 'registerVariables';
+    public const EVENT_PARSE_VARIABLES = 'parseVariables';
+
+
     // Static Methods
     // =========================================================================
 
@@ -58,6 +69,7 @@ class Variables
     {
         return [
             ['label' => Craft::t('formie', 'Email'), 'heading' => true],
+            ['label' => Craft::t('formie', 'User Email'), 'value' => '{userEmail}'],
             ['label' => Craft::t('formie', 'System Email'), 'value' => '{systemEmail}'],
             ['label' => Craft::t('formie', 'System Reply-To'), 'value' => '{systemReplyTo}'],
         ];
@@ -123,12 +135,20 @@ class Variables
      */
     public static function getVariablesArray(): array
     {
-        return [
+        $variables = [
             'form' => static::getFormVariables(),
             'general' => static::getGeneralVariables(),
             'email' => static::getEmailVariables(),
             'users' => static::getUsersVariables(),
         ];
+
+        // Allow plugins to modify the variables
+        $event = new RegisterVariablesEvent([
+            'variables' => $variables,
+        ]);
+        Event::trigger(self::class, self::EVENT_REGISTER_VARIABLES, $event);
+
+        return $event->variables;
     }
 
     /**
@@ -162,9 +182,16 @@ class Variables
         // Parse aliases and env variables
         $value = App::parseEnv($value);
 
-        // Use a cache key based on the submission, or few unsaved submissions, the formId
+        // Use a cache key based on the submission, or for unsaved submissions - the formId.
+        // Be sure to prefix things by what they are to prevent ID collision between form/submission elements.
         // This helps to only cache it per-submission, when being run in queues.
-        $cacheKey = $submission->id ?? $form->id ?? mt_rand();
+        $cacheKey = mt_rand();
+
+        if ($submission && $submission->id) {
+            $cacheKey = 'submission' . $submission->id;
+        } else if ($form && $form->id) {
+            $cacheKey = 'form' . $form->id;
+        }
 
         // Check to see if we have these already calculated for the request and submission
         // Just saves a good bunch of calculating values like looping through fields
@@ -205,7 +232,7 @@ class Variables
             // Form Info
             $formName = $form->title ?? '';
 
-            Formie::$plugin->getRenderCache()->setGlobalVariables($cacheKey, [
+            $variables = [
                 'formName' => $formName,
                 'submissionUrl' => $submission->cpEditUrl ?? '',
                 'submissionId' => $submission->id ?? null,
@@ -234,14 +261,15 @@ class Variables
                 'userFullName' => $userFullName,
                 'userFirstName' => $userFirstName,
                 'userLastName' => $userLastName,
-            ]);
+            ];
 
             // Add support for all global sets
             foreach (Craft::$app->getGlobals()->getAllSets() as $globalSet) {
-                Formie::$plugin->getRenderCache()->setGlobalVariables($cacheKey, [
-                    $globalSet->handle => $globalSet,
-                ]);
+                $variables[$globalSet->handle] = $globalSet;
             }
+
+            // Cache variables in-memory for better performance next parse
+            Formie::$plugin->getRenderCache()->setGlobalVariables($cacheKey, $variables);
         }
 
         $fieldVariables = [];
@@ -249,6 +277,12 @@ class Variables
         if ($includeSummary) {
             // Populate a collection of fields for "all", "visible" and "with-content"
             $fieldVariables = self::getFormFieldsVariables($form, $notification, $submission);
+
+            // We should also re-format the string to remove `<p>` tags from variables, which might produce invalid HTML
+            // but just for these summary tags which are block-level
+            $value = str_replace(['<p>{allFields}</p>'], '{allFields}', $value);
+            $value = str_replace(['<p>{allContentFields}</p>'], '{allContentFields}', $value);
+            $value = str_replace(['<p>{allVisibleFields}</p>'], '{allVisibleFields}', $value);
         }
 
         // Properly parse field values. There's seemingly performance benefits to doing this separate to the above
@@ -261,11 +295,26 @@ class Variables
 
         $variables = Formie::$plugin->getRenderCache()->getVariables($cacheKey);
 
-        // Try to parse submission + extra variables
-        $view = Craft::$app->getView();
+        // Parse each variable on it's own to handle .env vars
+        foreach ($variables as $key => $variable) {
+            if (is_string($variable)) {
+                $variables[$key] = App::parseEnv($variable);
+            }
+        }
 
+        // Allow plugins to modify the variables
+        $event = new ParseVariablesEvent([
+            'submission' => $submission,
+            'form' => $form,
+            'notification' => $notification,
+            'value' => $value,
+            'variables' => $variables,
+        ]);
+        Event::trigger(self::class, self::EVENT_PARSE_VARIABLES, $event);
+
+        // Try to parse submission + extra variables
         try {
-            return $view->renderObjectTemplate($value, $submission, $variables);
+            return Formie::$plugin->getTemplates()->renderObjectTemplate($value, $submission, $event->variables);
         } catch (Throwable $e) {
             Formie::error(Craft::t('formie', 'Failed to render dynamic string “{value}”. Template error: “{message}” {file}:{line}', [
                 'value' => $originalValue,
@@ -392,17 +441,20 @@ class Variables
             return $values;
         }
 
-        $parsedContent = '';
-
-        // If we're specifically trying to get the field value for use in emails, use the field's email template HTML.s
-        if ($notification) {
-            $parsedContent = (string)$field->getEmailHtml($submission, $notification, $submissionValue, ['hideName' => true]);
-        }
-
         $prefix = 'field.';
+
+        /* @var Settings $settings */
+        $settings = Formie::$plugin->getSettings();
 
         // For pretty much all cases, we want to use the value represented as a string
         $values["{$prefix}{$field->handle}"] = $field->getValueAsString($submissionValue, $submission);
+
+        $notification = $notification ?? new Notification();
+
+        // TODO: Remove in Formie 3.
+        if ($settings->useEmailTemplateForFieldVariables) {
+            $values["{$prefix}{$field->handle}"] = (string)$field->getEmailHtml($submission, $notification, $submissionValue, ['hideName' => true]);
+        }
 
         if ($field instanceof formfields\Date) {
             // Generate additional values
@@ -432,6 +484,16 @@ class Variables
                 $handle = "{$prefix}{$field->handle}.{$subfield['handle']}";
 
                 $values[$handle] = $submissionValue[$subfield['handle']] ?? '';
+
+                // Escape any HTML in field content for good measure
+                $values[$handle] = StringHelper::cleanString((string)$values[$handle]);
+
+                // Special handling for Prefix for a Name field. This can be removed in Formie 2
+                if ($field instanceof formfields\Name && $subfield['handle'] === 'prefix') {
+                    $prefixOptions = formfields\Name::getPrefixOptions();
+                    $prefixOption = ArrayHelper::firstWhere($prefixOptions, 'value', $values[$handle]);
+                    $values[$handle] = $prefixOption['label'] ?? '';
+                }
             }
         } else if ($field instanceof formfields\Group) {
             if ($submissionValue && $row = $submissionValue->one()) {
@@ -448,23 +510,32 @@ class Variables
                     }
                 }
             }
-        } else if ($field instanceof BaseRelationField) {
-            $values["{$prefix}{$field->handle}"] = $parsedContent;
-        } else if ($field instanceof formfields\Table) {
-            $values["{$prefix}{$field->handle}"] = $parsedContent;
-        } else if ($field instanceof formfields\MultiLineText) {
-            if ($field->useRichText) {
-                $values["{$prefix}{$field->handle}"] = $parsedContent;
-            } else {
-                $values["{$prefix}{$field->handle}"] = nl2br($field->getValueAsString($submissionValue, $submission));
+        } else if ($field instanceof formfields\MultiLineText && !$field->useRichText) {
+            $values["{$prefix}{$field->handle}"] = nl2br($field->getValueAsString($submissionValue, $submission));
+
+            // TODO: Remove in Formie 3.
+            if ($settings->useEmailTemplateForFieldVariables) {
+                $values["{$prefix}{$field->handle}"] = (string)$field->getEmailHtml($submission, $notification, $submissionValue, ['hideName' => true]);
             }
-        } else if ($field instanceof formfields\Repeater) {
-            $values["{$prefix}{$field->handle}"] = $parsedContent;
-        } else if ($field instanceof formfields\Signature) {
-            $values["{$prefix}{$field->handle}"] = $parsedContent;
-        } else if ($field instanceof formfields\Payment) {
-            $values["{$prefix}{$field->handle}"] = $parsedContent;
         }
+
+        // Some fields use the email template for the field, due to their complexity. 
+        // Also good for performance rendering only when we need to here.
+        if (
+            $field instanceof BaseRelationField || 
+            $field instanceof formfields\Table || 
+            ($field instanceof formfields\MultiLineText && $field->useRichText) || 
+            $field instanceof formfields\Repeater || 
+            $field instanceof formfields\Signature || 
+            $field instanceof formfields\Payment
+        ) {
+            // There are some circumstances where we're rendering email content, but not for an email. 
+            // Slack integration rich text is one of them, there are likely more.
+            $notification = $notification ?? new Notification();
+            $parsedContent = (string)$field->getEmailHtml($submission, $notification, $submissionValue, ['hideName' => true]);
+
+            $values["{$prefix}{$field->handle}"] = $parsedContent;
+        }     
 
         return $values;
     }

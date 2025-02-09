@@ -16,6 +16,7 @@ use verbb\formie\records\FormTemplate as FormTemplateRecord;
 use verbb\formie\records\Notification as NotificationRecord;
 use verbb\formie\records\PdfTemplate as PdfTemplateRecord;
 
+use Craft;
 use craft\elements\Entry;
 use craft\helpers\ArrayHelper;
 use craft\helpers\Json;
@@ -37,7 +38,7 @@ class ImportExportHelper
             ->one();
 
         // Remove attributes we won't need
-        foreach (['id', 'fieldContentTable', 'dateCreated', 'dateUpdated', 'uid'] as $key) {
+        foreach (['id', 'fieldContentTable', 'dateCreated', 'dateUpdated'] as $key) {
             ArrayHelper::remove($data, $key);
         }
 
@@ -55,7 +56,7 @@ class ImportExportHelper
                 ->one();
 
             // Remove attributes we won't need
-            foreach (['id', 'fieldLayoutId', 'dateDeleted', 'dateCreated', 'dateUpdated', 'uid'] as $key) {
+            foreach (['id', 'fieldLayoutId', 'dateDeleted', 'dateCreated', 'dateUpdated'] as $key) {
                 ArrayHelper::remove($data['formTemplate'], $key);
             }
         }
@@ -69,7 +70,7 @@ class ImportExportHelper
 
         // Get email + pdf templates
         foreach ($data['notifications'] as $i => $notification) {
-            foreach (['id', 'formId', 'dateCreated', 'dateUpdated', 'uid'] as $key) {
+            foreach (['id', 'formId', 'dateCreated', 'dateUpdated'] as $key) {
                 ArrayHelper::remove($notification, $key);
             }
 
@@ -85,7 +86,7 @@ class ImportExportHelper
                     ->one();
 
                 // Remove attributes we won't need
-                foreach (['id', 'dateDeleted', 'dateCreated', 'dateUpdated', 'uid'] as $key) {
+                foreach (['id', 'dateDeleted', 'dateCreated', 'dateUpdated'] as $key) {
                     ArrayHelper::remove($notification['emailTemplate'], $key);
                 }
             }
@@ -98,7 +99,7 @@ class ImportExportHelper
                     ->one();
 
                 // Remove attributes we won't need
-                foreach (['id', 'dateDeleted', 'dateCreated', 'dateUpdated', 'uid'] as $key) {
+                foreach (['id', 'dateDeleted', 'dateCreated', 'dateUpdated'] as $key) {
                     ArrayHelper::remove($notification['pdfTemplate'], $key);
                 }
             }
@@ -136,6 +137,9 @@ class ImportExportHelper
             }
         }
 
+        // Handy to keep track of which version of export logic this is, for importing between systems
+        $data['exportVersion'] = 'v2';
+
         return $data;
     }
 
@@ -161,6 +165,7 @@ class ImportExportHelper
         }
 
         // Grab all the extra bits from the export that need to be handles separately
+        $exportVersion = ArrayHelper::remove($data, 'exportVersion');
         $settings = Json::decodeIfJson(ArrayHelper::remove($data, 'settings'));
         $pages = ArrayHelper::remove($data, 'pages');
         $formTemplate = ArrayHelper::remove($data, 'formTemplate');
@@ -171,6 +176,11 @@ class ImportExportHelper
 
         // Handle any custom field
         $customFields = $data['customFields'] ?? [];
+
+        // Filter out any custom field values for fields that don't exist
+        $customFields = array_filter($customFields, function($value, $key) {
+            return Craft::$app->getFields()->getFieldByHandle($key);
+        }, ARRAY_FILTER_USE_BOTH);
 
         $form->setFieldValues($customFields);
 

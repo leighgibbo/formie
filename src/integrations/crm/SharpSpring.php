@@ -53,7 +53,7 @@ class SharpSpring extends Crm
 
     public function getDescription(): string
     {
-        return Craft::t('formie', 'Manage your SharpSpring customers by providing important information on their conversion on your site.');
+        return Craft::t('formie', 'Manage your {name} customers by providing important information on their conversion on your site.', ['name' => static::displayName()]);
     }
 
     /**
@@ -316,6 +316,7 @@ class SharpSpring extends Crm
                 'handle' => $field['systemName'],
                 'name' => $field['label'],
                 'type' => $this->_convertFieldType($field['dataType']),
+                'sourceType' => $field['dataType'],
                 'required' => (bool)$field['isRequired'],
             ]);
         }
